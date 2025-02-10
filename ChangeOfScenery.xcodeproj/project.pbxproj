@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		9B054FAE299702D200D15B47 /* ResetPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B054FAD299702D200D15B47 /* ResetPasswordView.swift */; };
+		9B4A9A6D2CFB851B00E0D74A /* BadgeHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A9A6C2CFB851500E0D74A /* BadgeHub.swift */; };
 		9B6EF1812AEDA97E007534FB /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 9B6EF1802AEDA97E007534FB /* FirebaseAnalytics */; };
 		9B6EF1832AEDA97E007534FB /* FirebaseAnalyticsOnDeviceConversion in Frameworks */ = {isa = PBXBuildFile; productRef = 9B6EF1822AEDA97E007534FB /* FirebaseAnalyticsOnDeviceConversion */; };
 		9B6EF1852AEDA97E007534FB /* FirebaseAnalyticsSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 9B6EF1842AEDA97E007534FB /* FirebaseAnalyticsSwift */; };
@@ -59,6 +60,7 @@
 		23F9B3DD196C9282AC9EBC6C /* libPods-ChangeOfScenery.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ChangeOfScenery.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5882AAA91E5D223B5A51ABED /* Pods-ChangeOfScenery.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ChangeOfScenery.debug.xcconfig"; path = "Target Support Files/Pods-ChangeOfScenery/Pods-ChangeOfScenery.debug.xcconfig"; sourceTree = "<group>"; };
 		9B054FAD299702D200D15B47 /* ResetPasswordView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ResetPasswordView.swift; sourceTree = "<group>"; };
+		9B4A9A6C2CFB851500E0D74A /* BadgeHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeHub.swift; sourceTree = "<group>"; };
 		9B6546BA29A3ECF800A05DE4 /* Podfile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = Podfile; sourceTree = SOURCE_ROOT; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
 		9B71B3B42C874374006C999B /* StreetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreetView.swift; sourceTree = "<group>"; };
 		9B77823929CB6DDE007C9CD2 /* ChangeOfScenery-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "ChangeOfScenery-Info.plist"; path = "/Users/cconway/Change of Scenery/iOS/ChangeOfScenery/ChangeOfScenery-Info.plist"; sourceTree = "<absolute>"; };
@@ -178,6 +180,7 @@
 		9B96264E2975FAD9006371A7 /* ChangeOfScenery */ = {
 			isa = PBXGroup;
 			children = (
+				9B4A9A6C2CFB851500E0D74A /* BadgeHub.swift */,
 				9BA5384229CD2AEE002F495D /* ChangeOfScenery.entitlements */,
 				9B96265D2975FD32006371A7 /* Info.plist */,
 				9B96264F2975FAD9006371A7 /* ChangeOfSceneryApp.swift */,
@@ -446,6 +449,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B88C0042978BACF00995F49 /* SignupView.swift in Sources */,
+				9B4A9A6D2CFB851B00E0D74A /* BadgeHub.swift in Sources */,
 				9B88C0022978BACF00995F49 /* AuthenticatedView.swift in Sources */,
 				9B88C0002978BACF00995F49 /* LoginView.swift in Sources */,
 				9B88C0032978BACF00995F49 /* AuthenticationView.swift in Sources */,
@@ -590,7 +594,7 @@
 				CODE_SIGN_ENTITLEMENTS = ChangeOfScenery/ChangeOfScenery.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 6Y57QV4NW5;
 				ENABLE_PREVIEWS = YES;
@@ -612,7 +616,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.5.4;
 				PRODUCT_BUNDLE_IDENTIFIER = info.changeofscenery.cos;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -635,7 +639,7 @@
 				CODE_SIGN_ENTITLEMENTS = ChangeOfScenery/ChangeOfScenery.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 6Y57QV4NW5;
 				ENABLE_PREVIEWS = YES;
@@ -657,7 +661,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.5.4;
 				PRODUCT_BUNDLE_IDENTIFIER = info.changeofscenery.cos;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

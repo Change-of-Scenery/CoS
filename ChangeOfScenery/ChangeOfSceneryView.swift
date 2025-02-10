@@ -35,7 +35,7 @@ struct ChangeOfSceneryView: View {
   @State private var showingGoogleRefresh = false
   @State private var googlePlaceId = ""
   @State private var yelpPlaceId = ""
-  @State private var reviewArea = "North Scituate"
+  @State private var reviewArea = "Hingham Harbor"
   @State private var documentName = ""
   @State private var addPlaceLabel = "Add Place"
  
@@ -84,15 +84,11 @@ struct ChangeOfSceneryView: View {
 //            }
           }
           
-          ToolbarItem(placement: .bottomBar) {
-            Button("Update Reviews") {
-              showingReviewUpdate.toggle()
-            }
-            .alert("Update Reviews", isPresented: $showingReviewUpdate) {
-              TextField("Area", text: $reviewArea)
-              Button("OK", action: loadReviews)
-            }
-          }
+//          ToolbarItem(placement: .bottomBar) {
+//            Button("Update Reviews") {
+//              loadReviews()
+//            }
+//          }
           
           if dataSource.level != "area" {
             ToolbarItem(placement: .cancellationAction) {
@@ -179,7 +175,7 @@ struct ChangeOfSceneryView: View {
     if let requestId = requestId {
       url = URL(string: "https://api.app.outscraper.com/requests/\(requestId)")!
     } else {
-      let fieldList = updateType == "ReviewsData" ? "status,id,name,reviews_data" : "status,id,name,site,street,phone,latitude,longitude,type,working_hours,rating,reviews"   // reservation_links
+      let fieldList = updateType == "Reviews" ? "status,id,name,reviews_data" : "status,id,name,site,street,phone,latitude,longitude,type,working_hours,rating,reviews"   // reservation_links
       url = URL(string: "https://api.app.outscraper.com/maps/reviews-v3?query=\(googlePlaceId)&fields=\(fieldList)&reviewsLimit=5&sort=newest&ignoreEmpty=true")!
     }
     
@@ -188,7 +184,6 @@ struct ChangeOfSceneryView: View {
       getData(from: urlRequest) { data, response, error in
         guard let data = data, error == nil else {
           UIImageView.reviewCount += 1
-          setMessage("Processed Google \(UIImageView.reviewCount) of \(UIImageView.reviewTotal)")
           return
         }
         do {
@@ -261,7 +256,7 @@ struct ChangeOfSceneryView: View {
                           UIImageView.reviewCount += 1
                           setMessage("Processed Google \(updateType) for \(placeName)")
                           deleteGoogleReviews(googlePlaceId: googlePlaceId)
-                          self.updateGoogleData(googlePlaceId: googlePlaceId, requestId: nil, updateType: "ReviewsData", documentId: documentId, area: area)
+                          self.updateGoogleData(googlePlaceId: googlePlaceId, requestId: nil, updateType: "Reviews", documentId: documentId, area: area)
                       }
                     }
                   } else {
@@ -455,7 +450,6 @@ struct ChangeOfSceneryView: View {
     var seconds:Double = 0.0
     let updateType = "PlaceData"
     CoSMap.areaName = reviewArea
-    setMessage("Loading Google reviews for \(reviewArea)...")
     CoSMap.placeCounter = 0
     
     db.collection("Boston").whereField("Area", in: [reviewArea]).getDocuments { queryPlaces, err in
@@ -463,6 +457,7 @@ struct ChangeOfSceneryView: View {
 
       for place in places {
         if let address = place.get("Address") as? String, address == "" {
+          CoSMap.loadReviewsName = place.get("Name") as! String
           deleteGoogleReviews(googlePlaceId: googlePlaceId)
           let documentId = place.documentID
           seconds += 5.0
@@ -470,15 +465,11 @@ struct ChangeOfSceneryView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
               updateGoogleData(googlePlaceId: googlePlaceId, requestId: nil, updateType: updateType, documentId: documentId, area: CoSMap.areaName)
               CoSMap.placeCounter += 1
-              print("Google place", CoSMap.placeCounter, places.count)
-              //              if CoSMap.placeCounter == places.count {
               self.loadYelpData()
-              //              }
             }
           }
         } else {
           CoSMap.placeCounter += 1
-          print("Google place (none)", CoSMap.placeCounter, places.count)
         }
       }
     }
@@ -495,10 +486,9 @@ struct ChangeOfSceneryView: View {
       let places = queryPlaces!.documents
 
       for place in places {
-        if let yelpCategory = place.get("YelpCategory") as? String, yelpCategory == "" {
+        if let name = place.get("Name") as? String, name == CoSMap.loadReviewsName {
           let yelpId = place.get("YelpPlaceId") as? String
-          let name = place.get("Name") as? String
-          let simpleName = name!.replacingOccurrences(of: " North Scituate", with: "").replacingOccurrences(of: " - Shipyard", with: "")
+          let simpleName = name.replacingOccurrences(of: " " + reviewArea, with: "")
           if yelpId != nil && yelpId != "" {
             let location = place.get("Location") as! GeoPoint
             let latitude = location.latitude
@@ -507,7 +497,7 @@ struct ChangeOfSceneryView: View {
             seconds += 5.0
             
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
-              setMessage("Processing Yelp data for \(simpleName)...")
+              setMessage("Processing Yelp data for \(name)...")
 
               CoSMap.Coordinator.yelpAPIClient.searchBusinesses(byTerm: simpleName, location: CoSMap.areaName + ", MA", latitude: latitude, longitude: longitude, radius: 1000, categories: nil, locale: nil, limit: 1, offset: nil, sortBy: nil, priceTiers: nil, openNow: nil, openAt: nil, attributes: nil) { business in
                 if let business = business {
@@ -533,9 +523,7 @@ struct ChangeOfSceneryView: View {
                       {
                         yelpReview in
                         CoSMap.placeCounter += 1
-                        // if CoSMap.placeCounter == places.count {
-                          loadYelpReviews()
-                        // }
+                        loadYelpReviews()
                       }
                     }
                   }
@@ -556,16 +544,17 @@ struct ChangeOfSceneryView: View {
   func loadYelpReviews() {
     let db = Firestore.firestore()
     CoSMap.areaName = reviewArea
-    setMessage("Loading Yelp reviews for \(CoSMap.areaName)...")
 
     db.collection("Boston").whereField("Area", in: [CoSMap.areaName]).getDocuments { queryPlaces, err in
       let places = queryPlaces!.documents
       
       for place in places {
-        if let yelpPlaceId = place.get("YelpPlaceId") as? String, let yelpCategory = place.get("YelpCategory") as? String {
-          if yelpPlaceId == CoSMap.yelpPlaceIdToProcess {
-            deleteYelpReviews(yelpPlaceId: yelpPlaceId)
-            updateYelpReviews(yelpPlaceId: yelpPlaceId, requestId: nil, documentId: place.documentID)
+        if let yelpId = place.get("YelpPlaceId") as? String {
+          let name = place.get("Name") as! String
+          if yelpId == CoSMap.yelpPlaceIdToProcess {
+            setMessage("Loading Yelp reviews for \(name)...")
+            deleteYelpReviews(yelpPlaceId: yelpId)
+            updateYelpReviews(yelpPlaceId: yelpId, requestId: nil, documentId: place.documentID)
           }
         }
       }
@@ -784,11 +773,14 @@ struct CoSMap: UIViewRepresentable {
   public static var selectedCallout: Callout?
   public static var yelpPlaceIdToProcess = ""
   public static var reviewsDisplayed = false
+  public static var loadReviewsName = ""
+  public static var lpgr:UILongPressGestureRecognizer?
+  public static var currentImageNumber = 0
+  public static var imagePath = ""
   
   func makeUIView(context: Context) -> MKMapView {
     let configuration = MKStandardMapConfiguration()
-    configuration.pointOfInterestFilter = MKPointOfInterestFilter(including: [.airport, .amusementPark, .evCharger, .fireStation, .library, .nationalPark, .park, .parking, .police, .restroom, .university])
-    print("making map view")
+    configuration.pointOfInterestFilter = MKPointOfInterestFilter(including: [.airport, .amusementPark, .evCharger, .fireStation, .library, .nationalPark, .park, .parking, .police, .restroom, .university, .publicTransport])
     CoSMap.mapView = MKMapView()
     CoSMap.mapView.delegate = context.coordinator
     // CoSMap.mapView.region = MKCoordinateRegion(center: dataSource.center, span: dataSource.span)
@@ -798,14 +790,14 @@ struct CoSMap: UIViewRepresentable {
     CoSMap.mapView.isPitchEnabled = false
     CoSMap.mapView.showsCompass = true
     
-//    let tgr = UITapGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleTap))
-//    tgr.numberOfTouchesRequired = 1
+//    CoSMap.tgr = UITapGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleTap))
+//    CoSMap.tgr.numberOfTouchesRequired = 1
 //    CoSMap.mapView.addGestureRecognizer(tgr)
     
-//    let lpgr = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleLongPress))
-//    lpgr.minimumPressDuration = 1
-//    lpgr.delaysTouchesBegan = true
-//    CoSMap.mapView.addGestureRecognizer(lpgr)
+    CoSMap.lpgr = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleLongPress))
+    CoSMap.lpgr!.minimumPressDuration = 1
+    CoSMap.lpgr!.delaysTouchesBegan = true
+    CoSMap.mapView.addGestureRecognizer(CoSMap.lpgr!)
     
     return CoSMap.mapView
   }
@@ -849,6 +841,8 @@ struct CoSMap: UIViewRepresentable {
             } else {
               self.dataSource.span = MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)
             }
+          case 10.5:
+            self.dataSource.span = MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)
           case 10:
             self.dataSource.span = MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3)
           default:
@@ -861,7 +855,7 @@ struct CoSMap: UIViewRepresentable {
     } else if dataSource.level == "area" && context.coordinator.currentLevel == "place" {
       context.coordinator.currentLevel = dataSource.level
       if view.region.span.latitudeDelta < dataSource.span.latitudeDelta + 0.005 {
-        context.coordinator.removePlacePoints(view)
+        context.coordinator.removeAreaPoints(view)
         view.setRegion(MKCoordinateRegion(center: dataSource.center, span: dataSource.span), animated: true)
         for image in CoSMap.pointImages {
           if let size = CoSMap.pointImageOriginalSizes[image.key] {
@@ -926,22 +920,28 @@ struct CoSMap: UIViewRepresentable {
           let mkPointAnnotation = MKPointAnnotation(__coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
           var placePoint = Point(mkPointAnnotation: mkPointAnnotation)
           placePoint.documentId = place.documentID
-          if let name = place.get("Name") as? String {
-            placePoint.name = name
-          }
+          placePoint.name = place.get("Name") as? String ?? ""
+          placePoint.shortName = place.get("ShortName") as? String ?? ""
           placePoint.coordinateLat = location.latitude
           placePoint.coordinateLng = location.longitude
           placePoint.address = place.get("Address") as? String ?? ""
+          placePoint.backgroundColor = place.get("BackgroundColor") as? String ?? ""
           placePoint.desc = place.get("Description") as? String ?? ""
           placePoint.notes = place.get("Notes") as? String ?? "Notes are coming soon."
           placePoint.type = place.get("Type") as? Int ?? 0
+          placePoint.imageCount = place.get("ImageCount") as? Int ?? 0
           placePoint.website = place.get("Website") as? String ?? ""
           placePoint.googlePlaceId = place.get("GooglePlaceId") as? String ?? ""
           placePoint.yelpPlaceId = place.get("YelpPlaceId") as? String ?? ""
           placePoint.yelpCategory = place.get("YelpCategory") as? String ?? ""
+          placePoint.yelpUrl = place.get("YelpUrl") as? String ?? ""
           placePoint.hours = place.get("Hours") as? String ?? ""
           placePoint.phone = place.get("Phone") as? String ?? ""
           placePoint.price = place.get("YelpPrice") as? String ?? ""
+          placePoint.estimatedValue = place.get("EstimatedValue") as? String ?? ""
+          placePoint.lotSize = place.get("LotSize") as? Double ?? 0.0
+          placePoint.squareFeet = place.get("SquareFeet") as? Int ?? 0
+          placePoint.yearBuilt = place.get("YearBuilt") as? String ?? "unknown"
           if let googleRating = place.get("GoogleRating") as? String {
             placePoint.googleRating = Double(googleRating) ?? 0.0
           } else if let googleRating = place.get("GoogleRating") as? Int {
@@ -965,7 +965,7 @@ struct CoSMap: UIViewRepresentable {
 
           CoSMap.placePoints.append(placePoint)
           
-          let imageName = CoSMap.currentImageFolder == "Charleston" ? placePoint.address.replacingOccurrences(of: " ", with: "") : Coordinator.sanitizeName(name: placePoint.name)
+          let imageName = CoSMap.currentImageFolder == "Charleston" ? placePoint.address.replacingOccurrences(of: " ", with: "") : placePoint.name
           CoSMap.pointImages[imageName] = UIImage(named: "\(CoSMap.areaName.replacingOccurrences(of: " ", with: ""))/\(imageName)")
           CoSMap.pointImageOriginalSizes[imageName] = CoSMap.pointImages[imageName]?.size
           if self.dataSource.filter != "" {
@@ -1014,11 +1014,10 @@ struct CoSMap: UIViewRepresentable {
       }
       
       special.size = placePoint!.size
-      var imageName = Coordinator.sanitizeName(name: placePoint!.name)
-      imageName = "\(CoSMap.areaName)/\(imageName)"
+      let imageName = "\(CoSMap.areaName)/\(placePoint!.name)"
       
       if let image = UIImage(named: imageName) {
-        special.originalImage = image // CIImage(image: image)!
+        special.originalImage = image
       }
   
       let random = Double.random(in: 0..<6)
@@ -1067,37 +1066,37 @@ struct CoSMap: UIViewRepresentable {
 //  }
   
   public static func updatePlaces() {
-//    startActivityIndicator()
     UIImageView.setMapMovementEnabled(enabled: false)
     mapView.removeAnnotations(mapView.annotations)
-//    annotationsToRemove = mapView.annotations
   
     CoSMap.specialTimers.forEach { specialTimer in
       specialTimer.value.invalidate()
     }
     
     CoSMap.specialTimers = Dictionary<String, Timer>()
-    // let areaZoom = mapView.camera.centerCoordinateDistance / 60
+    let areaZoom = mapView.camera.centerCoordinateDistance / 60
     
     for var placePoint in CoSMap.placePoints {
-//      if areaZoom > 7 {
-        var title = "" // , emoji = ""
-        let desc = placePoint.yelpCategory
-        let name = placePoint.name.replacingOccurrences(of: " - Shipyard", with: "")
-        title = name.replacingOccurrences(of: " North Scituate", with: "")
+      let desc = placePoint.yelpCategory
+      let title:String
       
-        placePoint.annotation = MKPointAnnotation(__coordinate: CLLocationCoordinate2D(latitude: placePoint.coordinate.latitude, longitude: placePoint.coordinate.longitude), title: title, subtitle: desc)
-//      } else {
-//        placePoint.annotation = MKPointAnnotation(__coordinate: CLLocationCoordinate2D(latitude: placePoint.coordinate.latitude, longitude: placePoint.coordinate.longitude))
-//      }
-        mapView.addAnnotation(placePoint.annotation)
+      if areaZoom > 30 || areaZoom < 2 || (CoSMap.areaName == "Hingham Heritage Map" && areaZoom < 6)  {
+        title = ""
+      } else if (areaZoom > 5 && placePoint.shortName != "" && CoSMap.areaName != "Hingham Heritage Map") || (CoSMap.areaName == "Hingham Heritage Map" && areaZoom > 12) {
+        title = placePoint.shortName
+      } else {
+        title = placePoint.name.replacingOccurrences(of: CoSMap.areaName, with: "")
+      }
+
+      placePoint.annotation = MKPointAnnotation(__coordinate: CLLocationCoordinate2D(latitude: placePoint.coordinate.latitude, longitude: placePoint.coordinate.longitude), title: title, subtitle: desc)
+
+      mapView.addAnnotation(placePoint.annotation)
     }
     
     CoSMap.stopActivityIndicator()
     
 //    let area = CoSMap.areaName.replacingOccurrences(of: " ", with: "")
 //    var address = "", desc = "", notes = "", website = "", phone = ""
-//    var latitude = 0.0, longitude = 0.0
 //    CoSMap.pointImages[area] = UIImage(named: "\(area)/\(area)")
     
 //    if CoSMap.areaName == "Bethesda Row" {
@@ -1196,7 +1195,7 @@ struct CoSMap: UIViewRepresentable {
   {
     
   }
-  
+    
   public class Coordinator: NSObject, MKMapViewDelegate {
     var parent: CoSMap
     var areaZoom: Double = 20
@@ -1237,11 +1236,15 @@ struct CoSMap: UIViewRepresentable {
         if gestureRecognizer.state != UIGestureRecognizer.State.ended {
           return
         } else if gestureRecognizer.state != UIGestureRecognizer.State.began {
-          let touchPoint:CGPoint = gestureRecognizer.location(in: CoSMap.mapView)
-          let touchMapCoordinates:CLLocationCoordinate2D = CoSMap.mapView.convert(touchPoint, toCoordinateFrom: CoSMap.mapView)
-          parent.streetView.coordinate = touchMapCoordinates
-          _ = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { timer in
-            self.parent.showStreetView = true
+          // let loc = gestureRecognizer.location(in: CoSMap.selectedCallout)
+          
+          if CoSMap.selectedCallout == nil {
+            let touchPoint:CGPoint = gestureRecognizer.location(in: CoSMap.mapView)
+            let touchMapCoordinates:CLLocationCoordinate2D = CoSMap.mapView.convert(touchPoint, toCoordinateFrom: CoSMap.mapView)
+            parent.streetView.coordinate = touchMapCoordinates
+            _ = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { timer in
+              self.parent.showStreetView = true
+            }
           }
         }
     }
@@ -1272,15 +1275,14 @@ struct CoSMap: UIViewRepresentable {
     @objc func onOrientationChange() {
       self.orientationChanged = true
     }
-    
+        
     func onMapCameraChange(frequency: MapCameraUpdateFrequency = .continuous) {
       print("camera changed", frequency)
       
       if CoSMap.lastDistance == 0 {
         CoSMap.lastDistance = CoSMap.mapView.camera.centerCoordinateDistance
       }
-      let distance = CoSMap.mapView.camera.centerCoordinateDistance
-      print(distance, CoSMap.lastDistance)
+      // let distance = CoSMap.mapView.camera.centerCoordinateDistance
     }
     
 //    func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
@@ -1318,20 +1320,19 @@ struct CoSMap: UIViewRepresentable {
                 CoSMap.lastDistance = CoSMap.mapView.camera.centerCoordinateDistance
               }
             }
-            CoSMap.panNumber = 0
-            CoSMap.panNumber += 1
+            CoSMap.panNumber = 1
+//            CoSMap.panNumber += 1
             timer.invalidate()
             self.lastSpan = mapView.region.span
           }
         }
       } else {
         self.orientationChanged = false
-        self.orientationChanged = false
         self.lastTime = Date()
         self.lastSpan = mapView.region.span
       }
     }
-    
+       
     public func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
       if let titleTry = annotation.title {
         if let title = titleTry, let subtitle = annotation.subtitle, subtitle == "area" {
@@ -1346,7 +1347,7 @@ struct CoSMap: UIViewRepresentable {
           }!
           
           var newSize = CGSize(), newWidth = 0.0, newHeight = 0.0
-          var imageName = Coordinator.sanitizeName(name: currentCity == "Charleston" ? placePoint.address.replacingOccurrences(of: " ", with: "") : placePoint.name)
+          var imageName = currentCity == "Charleston" ? placePoint.address.replacingOccurrences(of: " ", with: "") : placePoint.name
           let annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: imageName)
           imageName = "\(CoSMap.areaName)/\(imageName)"
           var portraitMultiple:Double = 0
@@ -1383,29 +1384,23 @@ struct CoSMap: UIViewRepresentable {
           else if areaZoom > 5 { delta = -180; distance = mapView.camera.centerCoordinateDistance * 0.0000037 }
           else if areaZoom > 4 { delta = -200; distance = mapView.camera.centerCoordinateDistance * 0.0000037 }
           else if areaZoom > 3 { delta = -220; distance = mapView.camera.centerCoordinateDistance * 0.0000035 }
-          else if areaZoom > 2 { delta = -240; distance = mapView.camera.centerCoordinateDistance * 0.000003 }
-          else if areaZoom > 1 { delta = -260; distance = mapView.camera.centerCoordinateDistance * 0.000002 }
-          else { delta = -300; distance = mapView.camera.centerCoordinateDistance * 0.000002 }
+          else if areaZoom > 2 { delta = -240; distance = mapView.camera.centerCoordinateDistance * 0.0000035 }
+          else if areaZoom > 1 { delta = -300; distance = mapView.camera.centerCoordinateDistance * 0.0000035 }
+          else { delta = -300; distance = mapView.camera.centerCoordinateDistance * 0.0000035 }
           
           if areaZoom != CoSMap.lastAreaZoom {
-//            print("areaZoom is", areaZoom, ", areaZoom was", CoSMap.lastAreaZoom)
             CoSMap.lastAreaZoom = areaZoom
-          } else {
-//            print("areaZoom same as last:", areaZoom)
           }
 
           let factor = 6000 + delta
           portraitMultiple = factor - Double(factor * screenSizeMultiple)
           let multiple:Double = portraitMultiple // UIWindow().screen.bounds.width > 820 ? landscapeMultiple : portraitMultiple
-          let maxNumber = 2.0 // = area == "WoodmontTriangle" ? 16.0 : area.contains("FriendshipHeights") ? 6.0 : (area == "BradleyShoppingCenter" || area == "Kenwood" || area == "WestbardSquare" || area == "SumnerPlace") ? 7.0 : 14.0
+          let maxNumber = 1.5 // = area == "WoodmontTriangle" ? 16.0 : area.contains("FriendshipHeights") ? 6.0 : (area == "BradleyShoppingCenter" || area == "Kenwood" || area == "WestbardSquare" || area == "SumnerPlace") ? 7.0 : 14.0
           var placeMarkerAnnotationView = PlaceMarkerAnnotationView()
-
-
           CoSMap.placeCounter += 1
           
           if annotationView == nil || placePoint.name == "Chinatown" {
             let divider = max(maxNumber, distance * multiple)
-            // print("areaZoom:", areaZoom, " delta:", delta, " divider:", divider)
             placeMarkerAnnotationView = PlaceMarkerAnnotationView(annotation: annotation, reuseIdentifier: imageName)
             placeMarkerAnnotationView.glyphImage = nil
             placeMarkerAnnotationView.glyphTintColor = UIColor.clear
@@ -1418,7 +1413,6 @@ struct CoSMap: UIViewRepresentable {
               banner == placePoint.name
             })
             {
-//              print("new view divider", divider)
               if let image = CoSMap.pointImages[imageName] {
                 newWidth = image.size.width / divider
                 newHeight = image.size.height / divider
@@ -1441,8 +1435,6 @@ struct CoSMap: UIViewRepresentable {
             }
           } else {
             let divider = max(maxNumber, distance * multiple)
-//            let divider = max(maxNumber, mapView.region.span.longitudeDelta * multiple)
-            print("reused view divider", divider)
             placeMarkerAnnotationView = annotationView as! PlaceMarkerAnnotationView
             placeMarkerAnnotationView.annotation = annotation
             placeMarkerAnnotationView.glyphImage = nil
@@ -1500,7 +1492,7 @@ struct CoSMap: UIViewRepresentable {
       
       if let subtitle = view.annotation!.subtitle, subtitle == "area" {
         let displayName = view.annotation!.title!!
-        self.removePlacePoints(mapView)
+        self.removeAreaPoints(mapView)
       
         db.collection("\(parent.dataSource.city)Area").whereField("Name", in: [displayName]).getDocuments { queryArea, err in
           for document in queryArea!.documents {
@@ -1535,6 +1527,9 @@ struct CoSMap: UIViewRepresentable {
             case 16:
               delta = 0.02
               cameraDistance = 2500.0
+            case 16.5:
+              delta = 0.015
+              cameraDistance = 900.0
             case 17:
               delta = 0.015
             case 17.5:
@@ -1590,22 +1585,45 @@ struct CoSMap: UIViewRepresentable {
         (view.detailCalloutAccessoryView!.superview!.superview!.subviews[2] as! UILabel).text = ""
         (view.detailCalloutAccessoryView!.superview!.superview!.subviews[2] as! UILabel).frame = .zero
         view.detailCalloutAccessoryView!.inputAccessoryViewController?.title = ""
-        view.detailCalloutAccessoryView!.superview?.superview?.backgroundColor = .white
         view.detailCalloutAccessoryView!.superview?.superview?.layer.borderWidth = 1.0
-        view.detailCalloutAccessoryView!.superview?.superview?.layer.borderColor = .init(red: 0.0, green: 0.0, blue: 0.0, alpha: 0.2)
+        view.detailCalloutAccessoryView!.superview?.superview?.layer.borderColor = .init(red: 0.0, green: 0.0, blue: 0.0, alpha: 0.0)
+        CoSMap.lpgr!.isEnabled = false
+//        CoSMap.lpgr!.minimumPressDuration = 0.01
         
         if let callout = view.detailCalloutAccessoryView as? Callout, let annotation = view.annotation {
+          CoSMap.selectedCallout = callout
           Coordinator.yelpAPIClient.cancelAllPendingAPIRequests()
-          callout.loadImageView()
+          callout.imageView.onImageTap(UITapGestureRecognizer())
           let placePoint = placePoints.first { point in
             point.annotation.coordinate.longitude == annotation.coordinate.longitude && point.annotation.coordinate.latitude == annotation.coordinate.latitude
           }!
-          setupYelpRatings(callout: callout, annotation: annotation, placePoint: placePoint)
-          setupGoogleRatings(callout: callout, placePoint: placePoint)
+          
+          if placePoint.backgroundColor != "" {
+            let backgroundColors = placePoint.backgroundColor
+            let red = backgroundColors.components(separatedBy: ",")[0].CGFloatValue()!
+            let green = backgroundColors.components(separatedBy: ",")[1].CGFloatValue()!
+            let blue = backgroundColors.components(separatedBy: ",")[2].CGFloatValue()!
+            view.detailCalloutAccessoryView!.superview?.superview?.backgroundColor = UIColor(red: red, green: green, blue: blue, alpha: 1.000)
+          }
+          
+          // CoSMap.currentImageNumber = 0
+          
+          if placePoint.imageCount > 1 {
+            callout.badgeHub?.setCount(placePoint.imageCount)
+          }
+          
+          if areaName != "Hingham Heritage Map" {
+            setupYelpRatings(callout: callout, annotation: annotation, placePoint: placePoint)
+            setupGoogleRatings(callout: callout, placePoint: placePoint)
+          }
           
           if callout.reviewsBar.subviews.count < 2 {
             callout.reviewsBar.removeFromSuperview()
             callout.notesTextView.topAnchor.constraint(equalTo: callout.imageView.bottomAnchor, constant: 10).isActive = true
+          }
+
+          _ = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { timer in
+            callout.badgeHub?.bump()
           }
           
           if placePoint.hasSpecial == true {
@@ -1626,19 +1644,24 @@ struct CoSMap: UIViewRepresentable {
                 
                 CoSMap.specialTimers[placePoint.name]?.invalidate()
 
-                let imagePath = "Boston/\(Coordinator.sanitizeName(name: placePoint.name))"
+                let imagePath = "Boston/\(CoSMap.areaName)/\(placePoint.name)"
                 
                 if let image = UIImage(named: imagePath) {
                   placePoint.placeMarkerAnnotationView.image = image.imageScaledToSize(size: placePoint.size, isOpaque: false)
                 }
               }
           }
+        } else {
+          print("cosimage: could not make callout and annotation \(view.annotation!)" )
         }
       }
-    }
+    }    
     
     func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
       UIImageView.setMapMovementEnabled(enabled: true)
+      CoSMap.selectedCallout = nil
+      CoSMap.lpgr!.isEnabled = true
+      CoSMap.currentImageNumber = 0
     }
     
     func getData(from url: URLRequest, completion: @escaping (Data?, URLResponse?, Error?) -> ()) {
@@ -1646,28 +1669,39 @@ struct CoSMap: UIViewRepresentable {
     }
 
     func setupGoogleRatings(callout:Callout, placePoint:Point) {
+      var textColor = UIColor.darkGray
+      
+      if placePoint.backgroundColor != "" {
+        let backgroundColors = placePoint.backgroundColor
+        let red = backgroundColors.components(separatedBy: ",")[0].CGFloatValue()!
+        if red < 0.29 {
+          textColor = .white
+        }
+      }
+      
       if placePoint.googleRating > 0 {
+        var starSpacing = UIDevice.current.userInterfaceIdiom == .pad ? callout.googleSpacingiPad : callout.googleSpacing
         let googleStarCount = Int(placePoint.googleRating)
+        callout.googleRating.textColor = textColor
         callout.googleRating.html = String(format: "%.1f", placePoint.googleRating)
         if callout.googleRating.html == "0.0" { callout.googleRating.html = "No reviews." }
         let topConstant = -0.5
 
         if googleStarCount > 0 {
-          callout.spacing = 4.0
           callout.reviewsBar.addSubview(callout.googleStar1)
           callout.googleStar1.translatesAutoresizingMaskIntoConstraints = false
           callout.googleStar1.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: topConstant).isActive = true
-          callout.googleStar1.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: callout.spacing).isActive = true
+          callout.googleStar1.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: starSpacing).isActive = true
           let googleTapGestureStar1 = UITapGestureRecognizer(target: callout.googleStar1, action: #selector(callout.googleLogo.onGoogleTap(_:)))
           callout.googleStar1.addGestureRecognizer(googleTapGestureStar1)
 
-          callout.spacing += 10
+          starSpacing += 10
           if googleStarCount > 1 {
             callout.reviewsBar.addSubview(callout.googleStar2)
             callout.googleStar2.translatesAutoresizingMaskIntoConstraints = false
             callout.googleStar2.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: topConstant).isActive = true
-            callout.googleStar2.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: callout.spacing).isActive = true
-            callout.spacing += 10
+            callout.googleStar2.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: starSpacing).isActive = true
+            starSpacing += 10
             let googleTapGestureStar2 = UITapGestureRecognizer(target: callout.googleStar2, action: #selector(callout.googleLogo.onGoogleTap(_:)))
             callout.googleStar2.addGestureRecognizer(googleTapGestureStar2)
 
@@ -1675,8 +1709,8 @@ struct CoSMap: UIViewRepresentable {
               callout.reviewsBar.addSubview(callout.googleStar3)
               callout.googleStar3.translatesAutoresizingMaskIntoConstraints = false
               callout.googleStar3.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: topConstant).isActive = true
-              callout.googleStar3.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: callout.spacing).isActive = true
-              callout.spacing += 10
+              callout.googleStar3.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: starSpacing).isActive = true
+              starSpacing += 10
               let googleTapGestureStar3 = UITapGestureRecognizer(target: callout.googleStar3, action: #selector(callout.googleLogo.onGoogleTap(_:)))
               callout.googleStar3.addGestureRecognizer(googleTapGestureStar3)
 
@@ -1684,8 +1718,8 @@ struct CoSMap: UIViewRepresentable {
                 callout.reviewsBar.addSubview(callout.googleStar4)
                 callout.googleStar4.translatesAutoresizingMaskIntoConstraints = false
                 callout.googleStar4.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: topConstant).isActive = true
-                callout.googleStar4.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: callout.spacing).isActive = true
-                callout.spacing += 10
+                callout.googleStar4.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: starSpacing).isActive = true
+                starSpacing += 10
                 let googleTapGestureStar4 = UITapGestureRecognizer(target: callout.googleStar4, action: #selector(callout.googleLogo.onGoogleTap(_:)))
                 callout.googleStar4.addGestureRecognizer(googleTapGestureStar4)
 
@@ -1693,8 +1727,7 @@ struct CoSMap: UIViewRepresentable {
                   callout.reviewsBar.addSubview(callout.googleStar5)
                   callout.googleStar5.translatesAutoresizingMaskIntoConstraints = false
                   callout.googleStar5.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: topConstant).isActive = true
-                  callout.googleStar5.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: callout.spacing).isActive = true
-                  callout.spacing += 10
+                  callout.googleStar5.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: starSpacing).isActive = true
                   let googleTapGestureStar5 = UITapGestureRecognizer(target: callout.googleStar5, action: #selector(callout.googleLogo.onGoogleTap(_:)))
                   callout.googleStar5.addGestureRecognizer(googleTapGestureStar5)
                 }
@@ -1702,15 +1735,17 @@ struct CoSMap: UIViewRepresentable {
             }
           }
         }
+        
         if Double(googleStarCount) < placePoint.googleRating {
           callout.reviewsBar.addSubview(callout.googleHalfStar)
           callout.googleHalfStar.translatesAutoresizingMaskIntoConstraints = false
           callout.googleHalfStar.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: topConstant).isActive = true
-          callout.googleHalfStar.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: callout.spacing).isActive = true
-          callout.spacing += 10
+          callout.googleHalfStar.leadingAnchor.constraint(equalTo: callout.googleRating.trailingAnchor, constant: starSpacing).isActive = true
         }
+        
         callout.googleUserRatingTotal.textFontSize = 11
-        callout.googleUserRatingTotal.textColor = .darkGray
+        callout.googleUserRatingTotal.textColor = textColor
+
         if placePoint.googleReviews > 0 {
           callout.googleUserRatingTotal.html = "(\(placePoint.googleReviews))"
         }
@@ -1718,7 +1753,6 @@ struct CoSMap: UIViewRepresentable {
         callout.googleUserRatingTotal.translatesAutoresizingMaskIntoConstraints = false
         callout.googleUserRatingTotal.topAnchor.constraint(equalTo: callout.googleRating.topAnchor, constant: -2.0).isActive = true
         callout.googleUserRatingTotal.leadingAnchor.constraint(equalTo: callout.reviewsBar.leadingAnchor, constant: callout.userRatingTotalConstant).isActive = true
-        
         callout.googleLogo.isUserInteractionEnabled = true
         let googleTapGesture = UITapGestureRecognizer(target: callout.googleLogo, action: #selector(callout.googleLogo.onGoogleTap(_:)))
         callout.googleLogo.addGestureRecognizer(googleTapGesture)
@@ -1728,12 +1762,22 @@ struct CoSMap: UIViewRepresentable {
     }
     
     func setupYelpRatings(callout:CoSMap.Callout, annotation:MKAnnotation, placePoint:Point) {
+      var textColor = UIColor.darkGray
+      
+      if placePoint.backgroundColor != "" {
+        let backgroundColors = placePoint.backgroundColor
+        let red = backgroundColors.components(separatedBy: ",")[0].CGFloatValue()!
+        if red < 0.29 {
+          textColor = .white
+        }
+      }
+
       callout.reviewsBar.addSubview(callout.yelpLogo)
       callout.yelpLogo.translatesAutoresizingMaskIntoConstraints = false
       callout.yelpLogo.topAnchor.constraint(equalTo: callout.reviewsBar.topAnchor, constant: 3.0).isActive = true
       callout.yelpLogo.leadingAnchor.constraint(equalTo: callout.reviewsBar.leadingAnchor, constant: 13.0).isActive = true
       callout.yelpRating.textFontSize = 11
-      callout.yelpRating.textColor = .darkGray
+      callout.yelpRating.textColor = textColor
       callout.yelpRating.html = String(format: "%.1f", placePoint.yelpRating)
       if callout.yelpRating.html == "0.0" { callout.yelpRating.html = "No reviews." }
       callout.reviewsBar.addSubview(callout.yelpRating)
@@ -1800,7 +1844,7 @@ struct CoSMap: UIViewRepresentable {
         callout.spacing += 10
       }
       callout.yelpUserRatingTotal.textFontSize = 11
-      callout.yelpUserRatingTotal.textColor = .darkGray
+      callout.yelpUserRatingTotal.textColor = textColor
       callout.yelpUserRatingTotal.html = "(\(placePoint.yelpReviews))"
       if callout.yelpUserRatingTotal.html == "(0)" { callout.yelpUserRatingTotal.html = "" }
       callout.reviewsBar.addSubview(callout.yelpUserRatingTotal)
@@ -1831,9 +1875,12 @@ struct CoSMap: UIViewRepresentable {
             areaPoint.coordinateLat = markerLocation.latitude
             areaPoint.coordinateLng = markerLocation.longitude
             areaPoint.name = area.get("Name") as! String
+            areaPoint.shortName = area.get("ShortName") as! String
             areaPoint.type = 0
             areaPoint.areaCenterLat = areaCenter.latitude
             areaPoint.areaCenterLng = areaCenter.longitude
+            areaPoint.areaMarkerLat = markerLocation.latitude
+            areaPoint.areaMarkerLng = markerLocation.longitude
             areaPoint.zoom = zoom
             self.areaPoints.append(areaPoint)
             mapView.addAnnotation(mkPointAnnotation)
@@ -1843,7 +1890,7 @@ struct CoSMap: UIViewRepresentable {
       }
     }
     
-    func removePlacePoints(_ mapView: MKMapView) {
+    func removeAreaPoints(_ mapView: MKMapView) {
       let annotationsToRemove = mapView.annotations
       
       for areaPoint in areaPoints {
@@ -1854,10 +1901,6 @@ struct CoSMap: UIViewRepresentable {
       mapView.removeAnnotations(annotationsToRemove)
     }
 
-    static func sanitizeName(name: String) -> String {
-      return name.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "&", with: "").replacingOccurrences(of: ".", with: "").replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "/", with: "").replacingOccurrences(of: "é", with: "e").replacingOccurrences(of: "è", with: "e").replacingOccurrences(of: "ã", with: "a").replacingOccurrences(of: "’", with: "").replacingOccurrences(of: ",", with: "")
-    }
-    
     static func getImageWithURL(urlString:String,completion: @escaping (_ image:UIImage?) -> Void) {
       guard let url = URL(string: urlString) else {
         print("invalid url")
@@ -1905,7 +1948,9 @@ struct CoSMap: UIViewRepresentable {
     var documentId = ""
     var displayName = ""
     var name = ""
+    var shortName = ""
     var address = ""
+    var backgroundColor = ""
     var desc = ""
     var notes = ""
     var type = 0
@@ -1914,6 +1959,8 @@ struct CoSMap: UIViewRepresentable {
     var coordinateLat = 0.0
     var areaCenterLng = 0.0
     var areaCenterLat = 0.0
+    var areaMarkerLat = 0.0
+    var areaMarkerLng = 0.0
     var zoom:Float = 20
     var googlePlaceId = ""
     var yelpPlaceId = ""
@@ -1925,21 +1972,34 @@ struct CoSMap: UIViewRepresentable {
     var yelpRating = 0.0
     var yelpReviews = 0
     var yelpCategory = ""
+    var yelpUrl = ""
     var size = CGSize()
     var placeMarkerAnnotationView = PlaceMarkerAnnotationView()
     var hasSpecial = false
+    var imageCount = 0
+    var estimatedValue = ""
+    var lotSize = 0.0
+    var squareFeet = 0
+    var yearBuilt = ""
   }
     
   class Callout: UIView {
     public let nameLabel = UniversalLabel(frame: .zero)
-    private let addressLabel = UniversalLabel(frame: .zero)
+    private let addressLabel = UILabel(frame: .zero)
     public let phoneTextView = UITextView(frame: .zero)
-    private let descLabel = UniversalLabel(frame: .zero)
+    private let descLabel = UILabel(frame: .zero)
     public let openLabel = UILabel(frame: .zero)
     public let hoursLabel = UILabel(frame: .zero)
     public let priceLabel = UILabel(frame: .zero)
+    public let builtLabel = UILabel(frame: .zero)
+    public let builtValue = UILabel(frame: .zero)
+    public let estimatedValueLabel = UILabel(frame: .zero)
+    public let estimatedValueValue = UILabel(frame: .zero)
+    public let lotSizeLabel = UILabel(frame: .zero)
+    public let lotSizeValue = UILabel(frame: .zero)
+    public let squareFeetLabel = UILabel(frame: .zero)
+    public let squareFeetValue = UILabel(frame: .zero)
     public let notesTextView = UITextView(frame: .zero)
-    public let imageView = UIImageView(frame: .zero)
     public let reviewsView = UIView(frame: .zero)
     public let reviewsBar = UIView(frame: .zero)
     public var reviewListScrollView = UIScrollView(frame: .zero)
@@ -1970,6 +2030,8 @@ struct CoSMap: UIViewRepresentable {
     public let yelpReviewLogo: UIImageView
     public var closeButton = UIButton(frame: .zero)
     public var spacing = 4.0
+    public var googleSpacing = 6.0
+    public var googleSpacingiPad = 10.0
     public var userRatingTotalConstant: CGFloat = 0.0
     public var googleRatingTop: CGFloat = 0.0
     private var hoursLabelTop: CGFloat = 1.2
@@ -1977,51 +2039,57 @@ struct CoSMap: UIViewRepresentable {
     public var runningReviewHeight = 0.0
     public var firstReview = true
     public var yelpPlaceId = ""
+    public var currentImageNumber = 0
     private var calloutTimer = Timer()
+    public var badgeHub: BadgeHub?
+    public var imageView: UIImageView
+    public var titleImageView: UIImageView
     
     init(placePoint: Point, currentImageFolder: String) {
       if UIDevice.current.userInterfaceIdiom == .pad {
-        yelpLogo = UIImageView(image: UIImage(named: "YelpiPad"))
-        yelpReviewLogo = UIImageView(image: UIImage(named: "YelpiPadReview"))
-        googleLogo = UIImageView(image: UIImage(named: "GoogleiPad"))
-        googleReviewLogo = UIImageView(image: UIImage(named: "GoogleiPad"))
-        googleStar1 = UIImageView(image: UIImage(named: "StariPad"))
-        googleStar2 = UIImageView(image: UIImage(named: "StariPad"))
-        googleStar3 = UIImageView(image: UIImage(named: "StariPad"))
-        googleStar4 = UIImageView(image: UIImage(named: "StariPad"))
-        googleStar5 = UIImageView(image: UIImage(named: "StariPad"))
-        googleHalfStar = UIImageView(image: UIImage(named: "HalfStariPad"))
-        self.yelpStar1 = UIImageView(image: UIImage(named: "StariPad"))
-        self.yelpStar2 = UIImageView(image: UIImage(named: "StariPad"))
-        self.yelpStar3 = UIImageView(image: UIImage(named: "StariPad"))
-        self.yelpStar4 = UIImageView(image: UIImage(named: "StariPad"))
-        self.yelpStar5 = UIImageView(image: UIImage(named: "StariPad"))
-        self.yelpHalfStar = UIImageView(image: UIImage(named: "HalfStariPad"))
+        yelpLogo = UIImageView(image: UIImage(named: "Misc/YelpiPad"))
+        yelpReviewLogo = UIImageView(image: UIImage(named: "Misc/YelpiPadReview"))
+        googleLogo = UIImageView(image: UIImage(named: "Misc/GoogleiPad"))
+        googleReviewLogo = UIImageView(image: UIImage(named: "Misc/GoogleiPad"))
+        googleStar1 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        googleStar2 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        googleStar3 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        googleStar4 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        googleStar5 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        googleHalfStar = UIImageView(image: UIImage(named: "Misc/HalfStariPad"))
+        self.yelpStar1 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        self.yelpStar2 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        self.yelpStar3 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        self.yelpStar4 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        self.yelpStar5 = UIImageView(image: UIImage(named: "Misc/StariPad"))
+        self.yelpHalfStar = UIImageView(image: UIImage(named: "Misc/HalfStariPad"))
         self.userRatingTotalConstant = 146.0
-        self.googleRatingTop = 8.0
-        self.hoursLabelTop = 2.7
+        self.googleRatingTop = 5.0
+        self.hoursLabelTop = 0.0
       } else {
-        self.yelpLogo = UIImageView(image: UIImage(named: "Yelp"))
-        self.yelpReviewLogo = UIImageView(image: UIImage(named: "Yelp"))
-        self.googleLogo = UIImageView(image: UIImage(named: "Google"))
-        self.googleReviewLogo = UIImageView(image: UIImage(named: "Google"))
-        googleStar1 = UIImageView(image: UIImage(named: "Star"))
-        googleStar2 = UIImageView(image: UIImage(named: "Star"))
-        googleStar3 = UIImageView(image: UIImage(named: "Star"))
-        googleStar4 = UIImageView(image: UIImage(named: "Star"))
-        googleStar5 = UIImageView(image: UIImage(named: "Star"))
-        googleHalfStar = UIImageView(image: UIImage(named: "HalfStar"))
-        self.yelpStar1 = UIImageView(image: UIImage(named: "Star"))
-        self.yelpStar2 = UIImageView(image: UIImage(named: "Star"))
-        self.yelpStar3 = UIImageView(image: UIImage(named: "Star"))
-        self.yelpStar4 = UIImageView(image: UIImage(named: "Star"))
-        self.yelpStar5 = UIImageView(image: UIImage(named: "Star"))
-        self.yelpHalfStar = UIImageView(image: UIImage(named: "HalfStar"))
+        self.yelpLogo = UIImageView(image: UIImage(named: "Misc/Yelp"))
+        self.yelpReviewLogo = UIImageView(image: UIImage(named: "Misc/Yelp"))
+        self.googleLogo = UIImageView(image: UIImage(named: "Misc/Google"))
+        self.googleReviewLogo = UIImageView(image: UIImage(named: "Misc/Google"))
+        googleStar1 = UIImageView(image: UIImage(named: "Misc/Star"))
+        googleStar2 = UIImageView(image: UIImage(named: "Misc/Star"))
+        googleStar3 = UIImageView(image: UIImage(named: "Misc/Star"))
+        googleStar4 = UIImageView(image: UIImage(named: "Misc/Star"))
+        googleStar5 = UIImageView(image: UIImage(named: "Misc/Star"))
+        googleHalfStar = UIImageView(image: UIImage(named: "Misc/HalfStar"))
+        self.yelpStar1 = UIImageView(image: UIImage(named: "Misc/Star"))
+        self.yelpStar2 = UIImageView(image: UIImage(named: "Misc/Star"))
+        self.yelpStar3 = UIImageView(image: UIImage(named: "Misc/Star"))
+        self.yelpStar4 = UIImageView(image: UIImage(named: "Misc/Star"))
+        self.yelpStar5 = UIImageView(image: UIImage(named: "Misc/Star"))
+        self.yelpHalfStar = UIImageView(image: UIImage(named: "Misc/HalfStar"))
         self.userRatingTotalConstant = 141.0
         self.googleRatingTop = 6.0
         self.hoursLabelTop = -6.0
       }
       
+      imageView = UIImageView(frame: .zero)
+      titleImageView = UIImageView(frame: .zero)
       googleStar1.isUserInteractionEnabled = true
       googleStar2.isUserInteractionEnabled = true
       googleStar3.isUserInteractionEnabled = true
@@ -2044,7 +2112,7 @@ struct CoSMap: UIViewRepresentable {
       CoSMap.currentImageFolder = currentImageFolder
       googleReviews = []
       super.init(frame: .zero)
-      super.widthAnchor.constraint(equalToConstant: 1210.0).isActive = true
+      super.widthAnchor.constraint(equalToConstant: 260.0).isActive = true
       self.inputViewController?.modalTransitionStyle = .coverVertical
       self.inputViewController?.modalPresentationStyle = .currentContext
       self.inputViewController?.navigationItem.title = ""
@@ -2056,10 +2124,12 @@ struct CoSMap: UIViewRepresentable {
     required init?(coder: NSCoder) {
       fatalError("init(coder:) has not been implemented")
     }
-    
+        
     private func setupView() {
+      CoSMap.selectedCallout = self
       translatesAutoresizingMaskIntoConstraints = false
-      heightAnchor.constraint(equalToConstant: 585).isActive = true
+      heightAnchor.constraint(equalToConstant: 550).isActive = true
+      setupBorder()
       setupReviewList()
       setupName()
       setupAddress()
@@ -2069,170 +2139,305 @@ struct CoSMap: UIViewRepresentable {
       setupNotes()
       setupCloseButton()
     }
+    
+    private func setupBorder() {
+      if let leftBorderImage = UIImage(named: "\(CoSMap.areaName)/Border Views/\(self.placePoint.name) Left") {
+        let leftBorder = UIImageView(image: leftBorderImage)
+        addSubview(leftBorder)
+        leftBorder.layer.zPosition = 3
+        leftBorder.center = CGPointMake(-5, 272)
+        let rightBorder = UIImageView(image: UIImage(named: "\(CoSMap.areaName)/Border Views/\(self.placePoint.name) Right"))
+        addSubview(rightBorder)
+        rightBorder.layer.zPosition = 3
+        rightBorder.center = CGPointMake(263, 270)
+        let topBorder = UIImageView(image: UIImage(named: "\(CoSMap.areaName)/Border Views/\(self.placePoint.name) Top"))
+        addSubview(topBorder)
+        topBorder.layer.zPosition = 3
+        topBorder.center = CGPointMake(130, -7)
+        let bottomBorder = UIImageView(image: UIImage(named: "\(CoSMap.areaName)/Border Views/\(self.placePoint.name) Bottom"))
+        addSubview(bottomBorder)
+        bottomBorder.layer.zPosition = 3
+        bottomBorder.center = CGPointMake(129, 553)
+      }
+    }
         
     private func setupReviewList() {
       addSubview(reviewListView)
-      reviewListView.backgroundColor = .white // UIColor(patternImage: UIImage(named: "Paper")!)
+      reviewListView.backgroundColor = .white
       reviewListView.translatesAutoresizingMaskIntoConstraints = false
       reviewListView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -10.0).isActive = true
       reviewListView.widthAnchor.constraint(equalToConstant: 280.0).isActive = true
-      reviewListView.heightAnchor.constraint(equalToConstant: 1000.0).isActive = true
+      reviewListView.heightAnchor.constraint(equalToConstant: 1010.0).isActive = true
+      reviewListView.topAnchor.constraint(equalTo: topAnchor, constant: -20.0).isActive = true
       reviewListView.isHidden = true
     }
     
     private func setupName() {
-      let name = placePoint.name == "Montgomery County Liquor & Wine Hampden Lane" ? "Montgomery County Liquor & Wine" : placePoint.name
-      nameLabel.html = placePoint.website == "" ? name : "<a href='\(placePoint.website)'>\(name)</a>"
-      nameLabel.isUserInteractionEnabled = true
-      nameLabel.numberOfLines = 1
-      
-      if placePoint.name.count > 28 {
-        nameLabel.textFontSize = 14
-      } else if placePoint.name.count > 22 {
-        nameLabel.textFontSize = 16
-      } else if placePoint.name.count > 18 {
-        nameLabel.textFontSize = 18
+      if let titleImage = UIImage(named: "\(CoSMap.areaName)/Title Views/\(placePoint.name)") {
+        let newWidth = 280
+        let newHeight = 68
+        let newSize = CGSize(width: newWidth, height: newHeight)
+        let resizedImage = titleImage.imageScaledToSize(size: newSize, isOpaque: false)
+        titleImageView = UIImageView(image: resizedImage)
+        addSubview(titleImageView)
+        nameLabel.html = nil
+        titleImageView.contentMode = .scaleAspectFill
+        titleImageView.clipsToBounds = true
+        titleImageView.backgroundColor = .white
+        titleImageView.translatesAutoresizingMaskIntoConstraints = false
+        titleImageView.topAnchor.constraint(equalTo: topAnchor, constant: -17.0).isActive = true
+        titleImageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -10.0).isActive = true
+        let tgr = UITapGestureRecognizer(target: CoSMap.selectedCallout!.titleImageView, action: #selector(CoSMap.selectedCallout!.titleImageView.onTitleTap(_:)))
+        titleImageView.addGestureRecognizer(tgr)
+        titleImageView.isUserInteractionEnabled = true
       } else {
-        nameLabel.textFontSize = 20
+        var name = placePoint.name == "Montgomery County Liquor & Wine Hampden Lane" ? "Montgomery County Liquor & Wine" : placePoint.name
+        name = areaName == "Hingham Heritage Map" && !name.hasSuffix("Tree") && !name.hasSuffix("Church") ? name + " House" : name
+        nameLabel.html = placePoint.website == "" ? name : "<a href='\(placePoint.website)'>\(name)</a>"
+        nameLabel.isUserInteractionEnabled = true
+        nameLabel.numberOfLines = 1
+        
+        if placePoint.name.count > 28 {
+          nameLabel.textFontSize = 14
+        } else if placePoint.name.count > 22 {
+          nameLabel.textFontSize = 16
+        } else if placePoint.name.count > 18 {
+          nameLabel.textFontSize = 18
+        } else {
+          nameLabel.textFontSize = 20
+        }
+        nameLabel.textFontWeight = .bold
+        nameLabel.textAlignment = .left
+        nameLabel.linkColor = .init(red: 0.1, green: 0.1, blue: 0.75, alpha: 1.0)
+        nameLabel.lineBreakMode = .byWordWrapping
+        
+        nameLabel.onPress { url in
+          guard let url = url else { return }
+          UIApplication.shared.open(url)
+        }
+        
+        addSubview(nameLabel)
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
+        nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 44.0).isActive = true
+        nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 0.0).isActive = true
       }
-      nameLabel.textFontWeight = .bold
-      nameLabel.textAlignment = .left
-      nameLabel.linkColor = .init(red: 0.1, green: 0.1, blue: 0.75, alpha: 1.0)
-      nameLabel.lineBreakMode = .byWordWrapping
-//      nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-//      nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-      
-      nameLabel.onPress { url in
-        guard let url = url else { return }
-        UIApplication.shared.open(url)
-      }
-      
-      addSubview(nameLabel)
-      nameLabel.translatesAutoresizingMaskIntoConstraints = false
-      nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
-      nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 44.0).isActive = true
-      nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: -40.0).isActive = true
     }
     
-    @objc public func onCloseTap() {
-      if CoSMap.reviewsDisplayed == true {
-        CoSMap.selectedCallout!.reviewListView.isHidden = true
-        CoSMap.selectedCallout!.nameLabel.isUserInteractionEnabled = true
-        CoSMap.selectedCallout!.phoneTextView.isUserInteractionEnabled = true
-        CoSMap.selectedCallout!.notesTextView.isUserInteractionEnabled = true
-        UIImageView.setMapMovementEnabled(enabled: true)
-        CoSMap.reviewsDisplayed = false
-        let configuration = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        CoSMap.selectedCallout!.closeButton.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: configuration), for: .normal)
-      } else {
-        CoSMap.mapView.deselectAnnotation(CoSMap.mapView.selectedAnnotations[0], animated: true)
-        UIImageView.setMapMovementEnabled(enabled: true)
-      }
-    }
-     
     private func setupAddress() {
-      addressLabel.textFontSize = 11
-      addressLabel.textFontWeight = .bold
-//      addressLabel.textColor = .gray
-      addressLabel.html = placePoint.address
+      addressLabel.font = UIFont(name: "HelveticaNeue", size: 12.0)
+      if placePoint.backgroundColor != "" {
+        let backgroundColors = placePoint.backgroundColor
+        let red = backgroundColors.components(separatedBy: ",")[0].CGFloatValue()!
+        if red < 0.29 {
+          addressLabel.textColor = .white
+        }
+      }
+      addressLabel.text = placePoint.address
       addSubview(addressLabel)
       addressLabel.translatesAutoresizingMaskIntoConstraints = false
-      addressLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: -8.0).isActive = true
-      addressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
-      addressLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
-      addSubview(phoneTextView)
-      phoneTextView.dataDetectorTypes = UIDataDetectorTypes.phoneNumber
-      phoneTextView.translatesAutoresizingMaskIntoConstraints = false
-      phoneTextView.topAnchor.constraint(equalTo: topAnchor, constant: 35.0).isActive = true
-      phoneTextView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 173.0).isActive = true
-      phoneTextView.widthAnchor.constraint(equalToConstant: 120.0).isActive = true
-      phoneTextView.heightAnchor.constraint(equalToConstant: 30.0).isActive = true
-      phoneTextView.backgroundColor = .clear
-      phoneTextView.isEditable = false
-      phoneTextView.text = placePoint.phone
+      addressLabel.clipsToBounds = true
+      addressLabel.contentMode = .scaleAspectFill
+
+      if areaName == "Hingham Heritage Map" {
+        addressLabel.topAnchor.constraint(equalTo: topAnchor, constant: 25.0).isActive = true
+        addressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5.0).isActive = true
+        addressLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
+      } else {
+        addressLabel.topAnchor.constraint(equalTo: topAnchor, constant: 55.0).isActive = true
+        addressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5.0).isActive = true
+        addressLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
+        addSubview(phoneTextView)
+        phoneTextView.dataDetectorTypes = UIDataDetectorTypes.phoneNumber
+        phoneTextView.translatesAutoresizingMaskIntoConstraints = false
+        phoneTextView.topAnchor.constraint(equalTo: topAnchor, constant: 47.0).isActive = true
+        phoneTextView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 176.0).isActive = true
+        phoneTextView.widthAnchor.constraint(equalToConstant: 120.0).isActive = true
+        phoneTextView.heightAnchor.constraint(equalToConstant: 30.0).isActive = true
+        phoneTextView.backgroundColor = .clear
+        phoneTextView.isEditable = false
+        phoneTextView.text = placePoint.phone
+      }
     }
 
     private func setupDesc() {
-      descLabel.textFontSize = 12
-      descLabel.textColor = .black
-      descLabel.backgroundColor = .clear
-      descLabel.html = placePoint.desc
-      addSubview(descLabel)
-      descLabel.translatesAutoresizingMaskIntoConstraints = false
-      descLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: 2.0).isActive = true
-      descLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
-      descLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
-      addSubview(openLabel)
-      openLabel.font = UIFont(name: "HelveticaNeue", size: 12.0)
-      openLabel.translatesAutoresizingMaskIntoConstraints = false
-      openLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: 7.5).isActive = true
-      openLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 139.0).isActive = true
-      addSubview(hoursLabel)
-      hoursLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
-      hoursLabel.translatesAutoresizingMaskIntoConstraints = false
-      hoursLabel.topAnchor.constraint(equalTo: topAnchor, constant: 60.0).isActive = true
-      hoursLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 160.0).isActive = true
-      hoursLabel.widthAnchor.constraint(equalToConstant: 90.0).isActive = true
-      hoursLabel.textAlignment = .right
-      hoursLabel.text = getHoursOpen(hours: placePoint.hours)
+
+      if areaName == "Hingham Heritage Map" {
+        addSubview(builtLabel)
+        builtLabel.font = UIFont(name: "HelveticaNeue", size: 12.0)
+        builtLabel.textColor = .black
+        builtLabel.layer.zPosition = 1
+        builtLabel.clipsToBounds = true
+        builtLabel.contentMode = .scaleAspectFill
+        builtLabel.topAnchor.constraint(equalTo: topAnchor, constant: 35.0).isActive = true
+        builtLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
+        builtLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
+        builtLabel.heightAnchor.constraint(equalToConstant: 12.0).isActive = true
+        builtLabel.widthAnchor.constraint(equalToConstant: 20.0).isActive = true
+        builtLabel.text = "built"
+        addSubview(builtValue)
+        builtValue.font = UIFont.boldSystemFont(ofSize: 12.0)
+        builtValue.textColor = .black
+        builtValue.layer.zPosition = 1
+        builtValue.clipsToBounds = true
+        builtValue.contentMode = .scaleAspectFill
+        builtValue.topAnchor.constraint(equalTo: topAnchor, constant: 5.0).isActive = true
+        builtValue.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16.0).isActive = true
+        builtValue.heightAnchor.constraint(equalToConstant: 12.0).isActive = true
+        builtValue.widthAnchor.constraint(equalToConstant: 20.0).isActive = true
+        builtValue.text = placePoint.yearBuilt
+      } else {
+        addSubview(descLabel)
+        descLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
+        descLabel.translatesAutoresizingMaskIntoConstraints = false
+        descLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6.0).isActive = true
+        descLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
+        descLabel.heightAnchor.constraint(equalToConstant: 12.0).isActive = true
+        descLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
+        descLabel.topAnchor.constraint(equalTo: topAnchor, constant: 69.0).isActive = true
+        descLabel.text = placePoint.desc
+        addSubview(openLabel)
+        openLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
+        openLabel.translatesAutoresizingMaskIntoConstraints = false
+        openLabel.topAnchor.constraint(equalTo: topAnchor, constant: 66.0).isActive = true
+        openLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 139.0).isActive = true
+        addSubview(hoursLabel)
+        hoursLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
+        hoursLabel.translatesAutoresizingMaskIntoConstraints = false
+        hoursLabel.topAnchor.constraint(equalTo: topAnchor, constant: 68.0).isActive = true
+        hoursLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 160.0).isActive = true
+        hoursLabel.widthAnchor.constraint(equalToConstant: 90.0).isActive = true
+        hoursLabel.textAlignment = .right
+        hoursLabel.text = getHoursOpen(hours: placePoint.hours)
+        if placePoint.backgroundColor != "" {
+          let backgroundColors = placePoint.backgroundColor
+          let red = backgroundColors.components(separatedBy: ",")[0].CGFloatValue()!
+          if red < 0.29 {
+            descLabel.textColor = .white
+            openLabel.textColor = .white
+            hoursLabel.textColor = .white
+          }
+        }
+      }
     }
     
     private func setupImageView() {
+      addSubview(imageView)
+      badgeHub = BadgeHub(view: imageView)
       imageView.contentMode = .scaleAspectFill
       imageView.clipsToBounds = true
-      addSubview(imageView)
       imageView.translatesAutoresizingMaskIntoConstraints = false
-      imageView.topAnchor.constraint(equalTo: descLabel.bottomAnchor, constant: 8).isActive = true
-      imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -10.0).isActive = true
-      imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 10.0).isActive = true
+      
+      if areaName == "Hingham Heritage Map" {
+        imageView.topAnchor.constraint(equalTo: builtLabel.bottomAnchor, constant: 68).isActive = true
+      } else {
+        imageView.topAnchor.constraint(equalTo: descLabel.bottomAnchor, constant: 8).isActive = true
+      }
+      
+      imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 0.0).isActive = true
+      imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 0.0).isActive = true
       imageView.heightAnchor.constraint(equalToConstant: 240).isActive = true
-      imageView.widthAnchor.constraint(equalToConstant: 280).isActive = true
+      imageView.isUserInteractionEnabled = true
+      let tgr = UITapGestureRecognizer(target: CoSMap.selectedCallout!.imageView, action: #selector(CoSMap.selectedCallout!.imageView.onImageTap(_:)))
+      imageView.addGestureRecognizer(tgr)
+      imageView.layer.zPosition = -1
     }
     
-    public func loadImageView() {
-      let imageName = CoSMap.currentImageFolder == "Charleston" ? placePoint.address.replacingOccurrences(of: " ", with: "_") : Coordinator.sanitizeName(name: placePoint.name)
-      let imageNumber = CoSMap.currentImageFolder == "Washington%20DC" ? "1" : ""
-      let imagePath = "https://res.cloudinary.com/backyardhiddengems-com/image/upload/\(CoSMap.currentImageFolder)/\(imageName)\(imageNumber).png"
-      Coordinator.getImageWithURL(urlString: imagePath) { image in
-        DispatchQueue.main.async {
-          self.imageView.image = image
+    @objc func handleImageScroll(gestureRecognizer: UILongPressGestureRecognizer) {
+        if gestureRecognizer.state != UIGestureRecognizer.State.ended {
+          return
+        } else if gestureRecognizer.state != UIGestureRecognizer.State.began {
+          // let touchPoint:CGPoint = gestureRecognizer.location(in: CoSMap.mapView)
         }
-      }
     }
     
     public func setupReviews() {
       addSubview(reviewsBar)
       reviewsBar.translatesAutoresizingMaskIntoConstraints = false
-      reviewsBar.backgroundColor = .white
+      
+      if placePoint.backgroundColor != "" {
+        let backgroundColors = placePoint.backgroundColor
+        let red = backgroundColors.components(separatedBy: ",")[0].CGFloatValue()!
+        let green = backgroundColors.components(separatedBy: ",")[1].CGFloatValue()!
+        let blue = backgroundColors.components(separatedBy: ",")[2].CGFloatValue()!
+        reviewsBar.backgroundColor = UIColor(red: red, green: green, blue: blue, alpha: 1.000)
+      }
+      
       reviewsBar.topAnchor.constraint(equalTo: self.imageView.bottomAnchor).isActive = true
       reviewsBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -10.0).isActive = true
       reviewsBar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 10.0).isActive = true
       reviewsBar.heightAnchor.constraint(equalToConstant: 63).isActive = true
-      reviewsBar.widthAnchor.constraint(equalToConstant: 280).isActive = true
-      reviewsBar.addSubview(priceLabel)
-      priceLabel.translatesAutoresizingMaskIntoConstraints = false
-      priceLabel.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 7.0).isActive = true
-      priceLabel.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 245.0).isActive = true
-      priceLabel.font = UIFont(name: "Helvetica", size: 12.0)
-      priceLabel.text = placePoint.price
-      reviewsBar.addSubview(googleLogo)
-      googleLogo.translatesAutoresizingMaskIntoConstraints = false
-      googleLogo.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 34.0).isActive = true
-      googleLogo.widthAnchor.constraint(equalToConstant: 48.0).isActive = true
-      googleLogo.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 14.0).isActive = true
-      googleRating.textFontSize = 11
-      googleRating.textColor = .darkGray
-      reviewsBar.addSubview(googleRating)
-      googleRating.translatesAutoresizingMaskIntoConstraints = false
-      googleRating.topAnchor.constraint(equalTo: googleLogo.topAnchor, constant: googleRatingTop).isActive = true
-      googleRating.leadingAnchor.constraint(equalTo: googleLogo.trailingAnchor, constant: 5.0).isActive = true
+      
+      if areaName == "Hingham Heritage Map" {
+        reviewsBar.addSubview(estimatedValueLabel)
+        estimatedValueLabel.translatesAutoresizingMaskIntoConstraints = false
+        estimatedValueLabel.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 7.0).isActive = true
+        estimatedValueLabel.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 14.0).isActive = true
+        estimatedValueLabel.font = UIFont(name: "Helvetica", size: 12.0)
+        estimatedValueLabel.text = "est value"
+        reviewsBar.addSubview(estimatedValueValue)
+        estimatedValueValue.translatesAutoresizingMaskIntoConstraints = false
+        estimatedValueValue.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 7.0).isActive = true
+        estimatedValueValue.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 68.0).isActive = true
+        estimatedValueValue.font = UIFont.boldSystemFont(ofSize: 12.0)
+        estimatedValueValue.text = placePoint.estimatedValue == "unknown" ? "_" : "$\(placePoint.estimatedValue)"
+        reviewsBar.addSubview(lotSizeLabel)
+        lotSizeLabel.translatesAutoresizingMaskIntoConstraints = false
+        lotSizeLabel.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 28.0).isActive = true
+        lotSizeLabel.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 14.0).isActive = true
+        lotSizeLabel.font = UIFont(name: "Helvetica", size: 12.0)
+        lotSizeLabel.text = "lot size"
+        reviewsBar.addSubview(lotSizeValue)
+        lotSizeValue.translatesAutoresizingMaskIntoConstraints = false
+        lotSizeValue.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 27.0).isActive = true
+        lotSizeValue.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 70.0).isActive = true
+        lotSizeValue.font = UIFont.boldSystemFont(ofSize: 12.0)
+        lotSizeValue.text = placePoint.lotSize == 0 ? "_" : "\(placePoint.lotSize) acres"
+        reviewsBar.addSubview(squareFeetLabel)
+        squareFeetLabel.translatesAutoresizingMaskIntoConstraints = false
+        squareFeetLabel.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 28.0).isActive = true
+        squareFeetLabel.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 200.0).isActive = true
+        squareFeetLabel.font = UIFont(name: "Helvetica", size: 12.0)
+        squareFeetLabel.text = "sqft"
+        reviewsBar.addSubview(squareFeetValue)
+        squareFeetValue.translatesAutoresizingMaskIntoConstraints = false
+        squareFeetValue.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 28.0).isActive = true
+        squareFeetValue.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 225.0).isActive = true
+        squareFeetValue.font = UIFont.boldSystemFont(ofSize: 12.0)
+        let format = NumberFormatter()
+        format.numberStyle = .decimal
+        squareFeetValue.text = placePoint.squareFeet == 0 ? "_" : format.string(from: placePoint.squareFeet as NSNumber)
+      } else {
+        reviewsBar.addSubview(priceLabel)
+        priceLabel.translatesAutoresizingMaskIntoConstraints = false
+        priceLabel.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 7.0).isActive = true
+        priceLabel.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 245.0).isActive = true
+        priceLabel.font = UIFont(name: "Helvetica", size: 12.0)
+        priceLabel.text = placePoint.price
+        reviewsBar.addSubview(googleLogo)
+        googleLogo.translatesAutoresizingMaskIntoConstraints = false
+        googleRating.translatesAutoresizingMaskIntoConstraints = false
+        
+        if UIDevice.current.userInterfaceIdiom == .pad {
+          googleLogo.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 38.0).isActive = true
+        } else {
+          googleLogo.topAnchor.constraint(equalTo: reviewsBar.topAnchor, constant: 34.0).isActive = true
+        }
+        
+        googleLogo.widthAnchor.constraint(equalToConstant: 48.0).isActive = true
+        googleLogo.leadingAnchor.constraint(equalTo: reviewsBar.leadingAnchor, constant: 14.0).isActive = true
+        googleRating.textFontSize = 11
+        googleRating.textColor = .darkGray
+        reviewsBar.addSubview(googleRating)
+        googleRating.topAnchor.constraint(equalTo: googleLogo.topAnchor, constant: googleRatingTop).isActive = true
+        googleRating.leadingAnchor.constraint(equalTo: googleLogo.trailingAnchor, constant: 5.0).isActive = true
+      }
     }
-   
     
     private func setupNotes() {
       notesTextView.textColor = .black
+      notesTextView.backgroundColor = .white
       notesTextView.font = UIFont(name: "HelveticaNeue", size: 10.0)
-      notesTextView.backgroundColor = UIColor(red: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
       notesTextView.layer.borderWidth = 0.3
       notesTextView.layer.borderColor = CGColor(gray: 0.5, alpha: 1.0)
       notesTextView.textContainerInset = UIEdgeInsets(top: 5, left: 2, bottom: 2, right: 2)
@@ -2241,12 +2446,10 @@ struct CoSMap: UIViewRepresentable {
       notesTextView.isEditable = false
       addSubview(notesTextView)
       notesTextView.translatesAutoresizingMaskIntoConstraints = false
-      notesTextView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 63).isActive = true
-//      notesTextView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
-//      notesTextView.trailingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
-      notesTextView.heightAnchor.constraint(equalToConstant: 200.0).isActive = true
-      notesTextView.bottomAnchor.constraint(equalTo: bottomAnchor).isActive = true
-      notesTextView.widthAnchor.constraint(equalToConstant: 270.0).isActive = true
+      notesTextView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 65.0).isActive = true
+      notesTextView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.0).isActive = true
+      notesTextView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4.0).isActive = true
+      notesTextView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5.0).isActive = true
     }
     
     private func setupCloseButton() {
@@ -2261,13 +2464,34 @@ struct CoSMap: UIViewRepresentable {
       closeButton.isUserInteractionEnabled = true
       closeButton.tintColor = .black
       closeButton.translatesAutoresizingMaskIntoConstraints = false
-      closeButton.topAnchor.constraint(equalTo: topAnchor, constant: -8.0).isActive = true
-      closeButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 238.0).isActive = true
-//      closeButton.widthAnchor.constraint(equalToConstant: 32.0).isActive = true
-//      closeButton.heightAnchor.constraint(equalToConstant: 32.0).isActive = true
-
+      closeButton.topAnchor.constraint(equalTo: topAnchor, constant: -14.0).isActive = true
+      closeButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 236.0).isActive = true
+      closeButton.widthAnchor.constraint(equalToConstant: 32.0).isActive = true
+      closeButton.heightAnchor.constraint(equalToConstant: 32.0).isActive = true
+      closeButton.layer.zPosition = 2
+      closeButton.setImage(UIImage(systemName: "chevron.backward.circle.fill", withConfiguration: configuration), for: .normal)
+      closeButton.isHidden = true
     }
 
+    @objc public func onCloseTap() {
+      if CoSMap.reviewsDisplayed == true {
+        CoSMap.selectedCallout!.reviewListView.isHidden = true
+        CoSMap.selectedCallout!.closeButton.isHidden = true
+        if CoSMap.selectedCallout!.nameLabel.html == nil {
+          CoSMap.selectedCallout!.titleImageView.isUserInteractionEnabled = true
+        } else {
+          CoSMap.selectedCallout!.nameLabel.isUserInteractionEnabled = true
+        }
+        CoSMap.selectedCallout!.phoneTextView.isUserInteractionEnabled = true
+        CoSMap.selectedCallout!.notesTextView.isUserInteractionEnabled = true
+        UIImageView.setMapMovementEnabled(enabled: true)
+        CoSMap.reviewsDisplayed = false
+      } else {
+        CoSMap.mapView.deselectAnnotation(CoSMap.mapView.selectedAnnotations[0], animated: true)
+        UIImageView.setMapMovementEnabled(enabled: true)
+      }
+    }
+     
     public func getHoursOpen(hours: String) -> String {
       let daysHours = hours.components(separatedBy: ";")
       
@@ -2556,17 +2780,26 @@ extension UIImage {
 }
 
 extension String {
-    var htmlToAttributedString: NSAttributedString? {
-        guard let data = data(using: .utf8) else { return nil }
-        do {
-          return try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding:String.Encoding.utf8.rawValue], documentAttributes: nil)
-        } catch {
-            return nil
-        }
+  var htmlToAttributedString: NSAttributedString? {
+    guard let data = data(using: .utf8) else { return nil }
+    do {
+      return try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding:String.Encoding.utf8.rawValue], documentAttributes: nil)
+    } catch {
+        return nil
     }
-    var htmlToString: String {
-        return htmlToAttributedString?.string ?? ""
+  }
+  
+  var htmlToString: String {
+    return htmlToAttributedString?.string ?? ""
+  }
+  
+  func CGFloatValue() -> CGFloat? {
+    guard let doubleValue = Double(self) else {
+      return nil
     }
+    
+    return CGFloat(doubleValue / 255)
+  }
 }
 
 extension Date {
@@ -2587,19 +2820,51 @@ extension UIImageView
     CoSMap.mapView.isRotateEnabled = enabled
   }
   
+  @objc public func onImageTap(_ recognizer: UITapGestureRecognizer) {
+    let imageName = CoSMap.currentImageFolder == "Charleston" ? CoSMap.selectedCallout!.placePoint.address.replacingOccurrences(of: " ", with: "_") : CoSMap.selectedCallout!.placePoint.name
+    let imageNumber = CoSMap.currentImageNumber > 0 ? String(CoSMap.currentImageNumber) : ""
+    
+    if let image = UIImage(named: "\(CoSMap.areaName)/Image Views/\(imageName)\(imageNumber)") {
+      if let callout = CoSMap.selectedCallout {
+        if CoSMap.currentImageNumber + 1 <= callout.placePoint.imageCount {
+          CoSMap.currentImageNumber += 1
+        } else if CoSMap.currentImageNumber + 1 == callout.placePoint.imageCount {
+          CoSMap.currentImageNumber = 0
+        } else {
+          CoSMap.currentImageNumber = 0
+          self.onImageTap(recognizer)
+        }
+        callout.imageView.isHidden = false
+        callout.imageView.image = image
+      }
+    } else {
+      CoSMap.currentImageNumber = 0
+      if let callout = CoSMap.selectedCallout {
+        let image = UIImage(named: "\(CoSMap.areaName)/Image Views/\(imageName)")
+        callout.imageView.isHidden = false
+        callout.imageView.image = image
+      }
+    }
+  }
+  
+  @objc public func onTitleTap(_ recognizer: UITapGestureRecognizer) {
+    let website = CoSMap.selectedCallout!.placePoint.website
+    if let url = URL(string: website) {
+      UIApplication.shared.open(url)
+    }
+  }
+  
   @objc public func onGoogleTap(_ recognizer: UITapGestureRecognizer) {
     if let callout = recognizer.view?.superview?.superview as? CoSMap.Callout {
       for view in callout.reviewListView.subviews {
         view.removeFromSuperview()
       }
 
-      UIImageView.reviewTop = 13.0
-      CoSMap.selectedCallout = callout
+      UIImageView.reviewTop = 26.0
       callout.reviewListView.isHidden = false
       callout.reviewListView.layer.zPosition = 1
       callout.closeButton.layer.zPosition = 2
-      let configuration = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-      callout.closeButton.setImage(UIImage(systemName: "chevron.backward.circle.fill", withConfiguration: configuration), for: .normal)
+      callout.closeButton.isHidden = false
 
       let db = Firestore.firestore()
                 
@@ -2619,15 +2884,15 @@ extension UIImageView
           reviewNameLabel.font = UIFont(name: "HelveticaNeue-Bold", size: 12.0)
           reviewNameLabel.textColor = .black
           reviewNameLabel.translatesAutoresizingMaskIntoConstraints = false
-          reviewNameLabel.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: -3.0).isActive = true
-//          reviewNameLabel.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: 10.0).isActive = true
+          reviewNameLabel.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: 10.0).isActive = true
           reviewNameLabel.widthAnchor.constraint(equalToConstant: 260.0).isActive = true
           reviewNameLabel.textAlignment = .left
-          reviewNameLabel.text = "                  \(callout.placePoint.name)"
+          reviewNameLabel.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: 60.0).isActive = true
+          reviewNameLabel.text = "- \(callout.placePoint.name)"
           
           callout.reviewListView.addSubview(callout.googleReviewLogo)
           callout.googleReviewLogo.translatesAutoresizingMaskIntoConstraints = false
-          callout.googleReviewLogo.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: -8.0).isActive = true
+          callout.googleReviewLogo.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: 6.0).isActive = true
           let googleReviewLogoLeadingAnchor = 11.0  // UIDevice.current.userInterfaceIdiom == .pad ? 84.0 : 83.0
           callout.googleReviewLogo.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: googleReviewLogoLeadingAnchor).isActive = true
           var reviewCounter = 0
@@ -2647,16 +2912,16 @@ extension UIImageView
                     guard let data = data, error == nil else { return }
                     DispatchQueue.main.async() {
                       if let image = UIImage(data: data, scale: 4.0) {
-                        self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: self.resizeImage(image: image, newWidth: 32.0), source: "Google", reviewCount: reviews.count)
+                        self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: self.resizeImage(image: image, newWidth: 32.0), source: "Misc/Google", reviewCount: reviews.count)
                       } else {
-                        self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "NoAuthorImage") ?? UIImage(), source: "Google", reviewCount: reviews.count)
+                        self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "Misc/NoAuthorImage") ?? UIImage(), source: "Misc/Google", reviewCount: reviews.count)
                       }
                     }
                   }
                 }
               } else {
                 DispatchQueue.main.async() {
-                  self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "NoAuthorImage") ?? UIImage(), source: "Google", reviewCount: reviews.count)
+                  self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "Misc/NoAuthorImage") ?? UIImage(), source: "Misc/Google", reviewCount: reviews.count)
                 }
               }
             }
@@ -2667,15 +2932,12 @@ extension UIImageView
     }
   }
   
-  func resizeImage(image: UIImage, newWidth: CGFloat) -> UIImage {
-      let scale = newWidth / image.size.width
-      let newHeight = image.size.height * scale
-      UIGraphicsBeginImageContext(CGSizeMake(newWidth, newHeight))
-      image.draw(in: CGRectMake(0, 0, newWidth, newHeight))
-      let newImage = UIGraphicsGetImageFromCurrentImageContext()
-      UIGraphicsEndImageContext()
-
-      return newImage!
+  @objc public func onYelpReviewTap(_ recognizer: UITapGestureRecognizer) {
+    if let yelpUrl = CoSMap.selectedCallout?.placePoint.yelpUrl {
+      if let url = URL(string: yelpUrl) {
+        UIApplication.shared.open(url)
+      }
+    }
   }
   
   @objc public func onYelpTap(_ recognizer: UITapGestureRecognizer) {
@@ -2685,13 +2947,11 @@ extension UIImageView
       }
 
       UIImageView.reviewTop = 13.0
-      CoSMap.selectedCallout = callout
       callout.reviewListView.isHidden = false
       callout.reviewListView.layer.zPosition = 1
       callout.closeButton.layer.zPosition = 2
-      let configuration = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-      callout.closeButton.setImage(UIImage(systemName: "chevron.backward.circle.fill", withConfiguration: configuration), for: .normal)
-      
+      callout.closeButton.isHidden = false
+
       let db = Firestore.firestore()
       
       db.collection("YelpReview").whereField("YelpPlaceId", in: [callout.placePoint.yelpPlaceId]).order(by: "ReviewDate", descending: true).getDocuments { queryReview, err in
@@ -2709,16 +2969,21 @@ extension UIImageView
           recentLabel.font = UIFont(name: "HelveticaNeue-Bold", size: 12.0)
           recentLabel.textColor = .black
           recentLabel.translatesAutoresizingMaskIntoConstraints = false
-          recentLabel.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: -2.0).isActive = true
-          recentLabel.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: 12.0).isActive = true
+          recentLabel.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: 8.0).isActive = true
+          recentLabel.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: 8.0).isActive = true
           recentLabel.widthAnchor.constraint(equalToConstant: 260.0).isActive = true
           recentLabel.textAlignment = .left
-          recentLabel.text = "                 \(callout.placePoint.name)"
+          recentLabel.layer.zPosition = 3
+          recentLabel.text = "               - \(callout.placePoint.name)"
           callout.reviewListView.addSubview(callout.yelpReviewLogo)
           callout.yelpReviewLogo.translatesAutoresizingMaskIntoConstraints = false
-          callout.yelpReviewLogo.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: -10.0).isActive = true
+          callout.yelpReviewLogo.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: 3.0).isActive = true
           let yelpReviewLogoLeadingAnchor = 11.0  // UIDevice.current.userInterfaceIdiom == .pad ? 85.0 : 83.0
           callout.yelpReviewLogo.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: yelpReviewLogoLeadingAnchor).isActive = true
+          callout.yelpReviewLogo.layer.zPosition = 3
+          let yelpReviewTapGestureLogo = UITapGestureRecognizer(target: callout.yelpLogo, action: #selector(callout.yelpLogo.onYelpReviewTap(_:)))
+          callout.yelpReviewLogo.addGestureRecognizer(yelpReviewTapGestureLogo)
+
           var reviewCounter = 0
           
           if reviews.count == 0 {
@@ -2733,21 +2998,21 @@ extension UIImageView
                 let text = review["Text"] as? String ?? ""
                 if let authorImage = review["AuthorImage"] as? String {
                   if authorImage == "" {
-                    self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "NoAuthorImage") ?? UIImage(), source: "Yelp", reviewCount: reviews.count)
+                    self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "Misc/NoAuthorImage") ?? UIImage(), source: "Misc/Yelp", reviewCount: reviews.count)
                   } else if let authorImageURL = URL(string: authorImage) {
                     self.getData(from: URLRequest(url: authorImageURL)) { data, response, error in
                       guard let data = data, error == nil else { return }
                       DispatchQueue.main.async() {
                         if let image = UIImage(data: data, scale: 32.0) {
-                          self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: self.resizeImage(image: image, newWidth: 32.0), source: "Yelp", reviewCount: reviews.count)
+                          self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: self.resizeImage(image: image, newWidth: 32.0), source: "Misc/Yelp", reviewCount: reviews.count)
                         } else {
-                          self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "NoAuthorImage") ?? UIImage(), source: "Yelp", reviewCount: reviews.count)
+                          self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "Misc/NoAuthorImage") ?? UIImage(), source: "Misc/Yelp", reviewCount: reviews.count)
                         }
                       }
                     }
                   }
                 } else {
-                  self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "NoAuthorImage") ?? UIImage(), source: "Yelp", reviewCount: reviews.count)
+                  self.loadReview(callout: callout, name: authorName, reviewRank: reviewRank, reviewDateTimestamp: reviewDateTimestamp, text: text, image: UIImage(named: "Misc/NoAuthorImage") ?? UIImage(), source: "Misc/Yelp", reviewCount: reviews.count)
                 }
               }
               reviewCounter += 1
@@ -2756,6 +3021,37 @@ extension UIImageView
         }
       }
     }
+  }
+  
+  func getImageWithURL(urlString:String,completion: @escaping (_ image:UIImage?) -> Void) {
+    guard let url = URL(string: urlString) else {
+      print("invalid url")
+      completion(nil)
+      return
+    }
+    
+    DispatchQueue.global().async {
+      if let data = try? Data(contentsOf: url) {
+        DispatchQueue.main.async {
+          let image = UIImage(data: data, scale: 12)
+            completion(image)
+        }
+      } else {
+        print("Error url: \(url)")
+        completion(nil)
+      }
+    }
+  }
+  
+  func resizeImage(image: UIImage, newWidth: CGFloat) -> UIImage {
+      let scale = newWidth / image.size.width
+      let newHeight = image.size.height * scale
+      UIGraphicsBeginImageContext(CGSizeMake(newWidth, newHeight))
+      image.draw(in: CGRectMake(0, 0, newWidth, newHeight))
+      let newImage = UIGraphicsGetImageFromCurrentImageContext()
+      UIGraphicsEndImageContext()
+
+      return newImage!
   }
   
   func loadReview(callout:CoSMap.Callout, name:String, reviewRank:Double, reviewDateTimestamp:Timestamp, text:String, image:UIImage, source:String, reviewCount:Int) {
@@ -2791,8 +3087,8 @@ extension UIImageView
     UIImageView.reviewTop += 40.0
     UIImageView.reviewCount += 1
     var starCount = Int(reviewRank)
-    let starImageName = UIDevice.current.userInterfaceIdiom == .pad ? "StariPad" : "Star"
-    let halfStarImageName = UIDevice.current.userInterfaceIdiom == .pad ? "HalfStariPad" : "HalfStar"
+    let starImageName = UIDevice.current.userInterfaceIdiom == .pad ? "Misc/StariPad" : "Misc/Star"
+    let halfStarImageName = UIDevice.current.userInterfaceIdiom == .pad ? "Misc/HalfStariPad" : "Misc/HalfStar"
     var starLead = indent + 30
 
     while starCount > 0 {
@@ -2836,33 +3132,46 @@ extension UIImageView
     reviewTextView.attributedText = reviewText.htmlToAttributedString
     reviewTextView.translatesAutoresizingMaskIntoConstraints = false
     reviewTextView.leadingAnchor.constraint(equalTo: reviewBar.leadingAnchor, constant: 17.0).isActive = true
-    reviewTextView.topAnchor.constraint(equalTo: reviewBar.bottomAnchor, constant: 5.0).isActive = true
+    reviewTextView.topAnchor.constraint(equalTo: reviewBar.bottomAnchor, constant: 2.0).isActive = true
     reviewTextView.backgroundColor = UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
     reviewTextView.widthAnchor.constraint(equalToConstant: 240.0).isActive = true
     
     if reviewCount == 1 {
-      reviewTextView.heightAnchor.constraint(equalToConstant: 66.0 * 8).isActive = true
+      reviewTextView.heightAnchor.constraint(equalToConstant: 62.0 * 8).isActive = true
     } else {
       reviewTextView.heightAnchor.constraint(equalToConstant: 66.0).isActive = true
     }
 
-    UIImageView.reviewTop += 74
+    UIImageView.reviewTop += 72
     
     if Int(UIImageView.reviewTotal) == UIImageView.reviewCount {
       callout.reviewListView.isHidden = false
     }
   }
   
+//  public func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange) -> Bool {
+//    if #available(iOS 10.0, *) {
+//        UIApplication.shared.open(URL, options: [:])
+//    } else {
+//        UIApplication.shared.openURL(URL)
+//    }
+//    return true
+//  }
+  
   func noReviewsBar(callout:CoSMap.Callout) {
     let reviewBar = UIView(frame: .zero)
     callout.reviewListView.addSubview(reviewBar)
     reviewBar.translatesAutoresizingMaskIntoConstraints = false
     reviewBar.backgroundColor = .white
-    reviewBar.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: UIImageView.reviewTop).isActive = true
+    reviewBar.topAnchor.constraint(equalTo: callout.reviewListView.topAnchor, constant: -15.0).isActive = true
     reviewBar.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: 0.0).isActive = true
     reviewBar.widthAnchor.constraint(equalTo: callout.reviewListView.widthAnchor).isActive = true
     reviewBar.heightAnchor.constraint(equalToConstant: 40.0).isActive = true
-    callout.nameLabel.isUserInteractionEnabled = false
+    if callout.nameLabel.html == nil {
+      callout.titleImageView.isUserInteractionEnabled = false
+    } else {
+      callout.nameLabel.isUserInteractionEnabled = false
+    }
     callout.phoneTextView.isUserInteractionEnabled = false
     callout.notesTextView.isUserInteractionEnabled = false
     let noReviewsTodayLabel = UILabel(frame: .zero)
@@ -2874,7 +3183,8 @@ extension UIImageView
     noReviewsTodayLabel.leadingAnchor.constraint(equalTo: callout.reviewListView.leadingAnchor, constant: 20.0).isActive = true
     noReviewsTodayLabel.widthAnchor.constraint(equalToConstant: 200.0).isActive = true
     noReviewsTodayLabel.textAlignment = .left
-    noReviewsTodayLabel.text = "No reviews are available today."
+    noReviewsTodayLabel.text = "No reviews are available."
+    CoSMap.reviewsDisplayed = true
   }
   
   @objc func touchedReview() {
@@ -2883,6 +3193,10 @@ extension UIImageView
   
   func getData(from url: URLRequest, completion: @escaping (Data?, URLResponse?, Error?) -> ()) {
       URLSession.shared.dataTask(with: url, completionHandler: completion).resume()
+  }
+  
+  func sanitizeName(name: String) -> String {
+    return name.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "&", with: "").replacingOccurrences(of: ".", with: "").replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "/", with: "").replacingOccurrences(of: "é", with: "e").replacingOccurrences(of: "è", with: "e").replacingOccurrences(of: "ã", with: "a").replacingOccurrences(of: "’", with: "").replacingOccurrences(of: ",", with: "")
   }
 }
 
@@ -2897,3 +3211,4 @@ extension MKMapView {
       return self.annotations(in: self.visibleMapRect).map { obj -> MKAnnotation in return obj as! MKAnnotation }
     }
 }
+
