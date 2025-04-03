@@ -108,19 +108,19 @@ extension UniversalLabel {
             return attributes
         }
 
-        let defaultFont: UIFont
-
-        if font.fontDescriptor.symbolicTraits.contains(.traitItalic) {
-          defaultFont = UIFont.italicSystemFont(ofSize: self.textFontSize)
-        } else {
-          defaultFont = UIFont.systemFont(ofSize: self.textFontSize, weight: self.textFontWeight)
-        }
+//        let defaultFont: UIFont
+//
+//        if font.fontDescriptor.symbolicTraits.contains(.traitItalic) {
+//          defaultFont = UIFont.italicSystemFont(ofSize: self.textFontSize)
+//        } else {
+//          defaultFont = UIFont.systemFont(ofSize: self.textFontSize, weight: self.textFontWeight)
+//        }
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = self.textAlignment
         
         return [
-            .font: defaultFont,
+            .font: font,
             .paragraphStyle: paragraphStyle
         ]
     }
@@ -131,7 +131,6 @@ extension UniversalLabel {
         range: NSRange
     ) -> AttributedTextWithLink {
         let string = attributedString.attributedSubstring(from: range).string
-
         let textAttributes = self.prepareTextAttributes(attributes)
         var linkAttributes = textAttributes
         linkAttributes[.foregroundColor] = self.linkColor

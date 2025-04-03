@@ -24,9 +24,9 @@ public class BadgeHub: NSObject {
     private var initialFrame = CGRect.zero
     
     private struct Constants {
-        static let notificHubDefaultDiameter: CGFloat = 25
-        static let badgeX: CGFloat = 230
-        static let badgeY: CGFloat = 8
+        static let notificHubDefaultDiameter: CGFloat = 20
+        static let badgeX: CGFloat = 237
+        static let badgeY: CGFloat = 3
         static let countMagnitudeAdaptationRatio: CGFloat = 0.3
         // Pop values
         static let popStartRatio: CGFloat = 0.85
