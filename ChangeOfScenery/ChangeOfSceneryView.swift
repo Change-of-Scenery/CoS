@@ -2317,7 +2317,6 @@ struct CoSMap: UIViewRepresentable {
       setupImageView()
       setupReviews()
       setupNotes()
-      setupCloseButton()
     }
     
     private func setupBorder() {
