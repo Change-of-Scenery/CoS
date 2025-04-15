@@ -38,6 +38,9 @@ struct ChangeOfSceneryView: View {
   @State private var reviewArea = "Hingham Square"
   @State private var documentName = ""
   @State private var addPlaceLabel = "Add Place"
+  @State private var archStyle: String = ""
+  @State private var timePeriod: String = ""
+  @State private var family: String = ""
  
   var body: some View {
     let cosMap = CoSMap(dataSource: dataSource, longPressedLocation: $longPressedLocation, showStreetView: $showStreetView, coordinate: $coordinate, streetView: $cosStreetView, isHidden: $isHidden)
@@ -52,64 +55,54 @@ struct ChangeOfSceneryView: View {
         .edgesIgnoringSafeArea(.all)
         .analyticsScreen(name: "ChangeOfSceneryView")
         .toolbar {
-//          if dataSource.level == "area" {
-//            ToolbarItem(placement: .primaryAction) {
-//              Button {
-//                let annotationsToRemove = CoSMap.mapView.annotations
-//                CoSMap.mapView.removeAnnotations(annotationsToRemove)
-//                CoSMap.context?.coordinator.getAreas(CoSMap.mapView)
-//              } label: {
-//                Label(
-//                  title: { },
-//                  icon: {Image(systemName: "arrow.clockwise.circle.fill").foregroundColor(.white)}
-//                )
-//              }
-//            }
-//          } else {
-//            ToolbarItem(placement: .primaryAction) {
-//              Button {
-//                CoSMap.context?.coordinator.removeAreaPoints(CoSMap.mapView)
-//                CoSMap.context?.coordinator.getAreas(CoSMap.mapView)
-//                // cosMap.getPlaces(CoSMap.mapView, areaTitle: CoSMap.areaName, updateAnnotations: true)
-//              } label: {
-//                Label(
-//                  title: { },
-//                  icon: {Image(systemName: "arrow.clockwise.circle.fill").foregroundColor(.white)}
-//                )
-//              }
-//          }
-//          }
-
-//            Menu {
-//              Button("Washington DC") {
-//                dataSource.city = "WashingtonDC"
-//              }
-//              Button("Boston MA") {
-//                dataSource.city = "Boston"
-//              }
-//              Button("Charleston SC") {
-//                dataSource.city = "Charleston"
-//              }
-//              Button("Contact Us") {
-//                showingAlert = true
-//              }
-//            } label: {
-//              Label(
-//                title: { },
-//                icon: {Image(systemName: "ellipsis.circle.fill").foregroundColor(.white)}
-//              )
-//            }
-//          }
+          ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+              Picker(selection: $archStyle, label: Text("Architecture Type")) {
+                Text("Cape Cod").tag("Cape Cod")
+                Text("Colonial").tag("Colonial")
+                Text("Federal").tag("Federal")
+                Text("Gambrel Cottage").tag("Gambrel Cottage")
+                Text("Italianate").tag("Italianate")
+                Text("Queen Anne").tag("Queen Anne")
+                Text("Second Empire").tag("Second Empire")
+                Text("Traditional").tag("Traditional")
+              }.pickerStyle(.menu).onChange(of: archStyle) { filterOn(type: "ArchStyle", value: archStyle) }
+              Picker(selection: $timePeriod, label: Text("Time Period")) {
+                Text("17th Century").tag("17th Century")
+                Text("Pre-Independence").tag("Pre-Independence")
+                Text("Post-Independence").tag("Post-Independence")
+                Text("19th Century").tag("19th Century")
+              }.pickerStyle(.menu).onChange(of: timePeriod) { filterOn(type: "YearBuilt", value: timePeriod) }
+              Picker(selection: $family, label: Text("Family")) {
+                Text("Beal").tag("Beal")
+                Text("Burr").tag("Burr")
+                Text("Cushing").tag("Cushing")
+                Text("Fearing").tag("Fearing")
+                Text("Gardner").tag("Gardner")
+                Text("Hersey").tag("Hersey")
+                Text("Hobart").tag("Hobart")
+                Text("Lane").tag("Lane")
+                Text("Leavitt").tag("Leavitt")
+                Text("Lincoln").tag("Lincoln")
+                Text("Loring").tag("Loring")
+                Text("Sprague").tag("Sprague")
+                Text("Stephenson").tag("Stephenson")
+                Text("Thaxter").tag("Thaxter")
+                Text("Tower").tag("Tower")
+                Text("Whiting").tag("Whiting")
+                Text("Whiton").tag("Whiton")
+                Text("Wilder").tag("Wilder")
+              }.pickerStyle(.menu).onChange(of: family) { filterOn(type: "ShortName", value: family) }
+            } label: {
+              Image(systemName: "ellipsis.circle.fill").foregroundColor(.black)
+            }
+          }
           
 //          ToolbarItem(placement: .bottomBar) {
 //            Button("Update Reviews") {
 //              loadReviews()
-//                }
+//            }
 //          }
-
-//            ToolbarItem(placement: .bottomBar) {
-//              Text("HM content provided by the Hingham Historical Society.").font(.system(size: 10))
-//            }
           
           if dataSource.level != "area" {
             ToolbarItem(placement: .cancellationAction) {
@@ -122,6 +115,7 @@ struct ChangeOfSceneryView: View {
                 Image(uiImage: UIImage(systemName: "chevron.backward.circle.fill", withConfiguration: configuration)!)
               }
             }
+            
             if CoSMap.areaName == "Woodmont Triangle" || CoSMap.areaName == "Bethesda Row" || CoSMap.areaName.starts(with: "Friendship Heights") || CoSMap.areaName == "Wildwood" || CoSMap.areaName == "Bradley Shopping Center" || CoSMap.areaName == "Kenwood" || CoSMap.areaName == "Westbard Square" || CoSMap.areaName == "Sumner Place" || CoSMap.areaName == "Spring Valley" {
               ToolbarItem(placement: .primaryAction)
               {
@@ -174,6 +168,41 @@ struct ChangeOfSceneryView: View {
     }
     .alert(isPresented: $showingAlert) {
         return Alert(title: Text("Contact Info"), message: Text("info@changeofscenery.info"), dismissButton: .default(Text("OK")))
+    }
+  }
+  
+  func filterOn(type:String, value:String) {
+    let db = Firestore.firestore()
+    let displayName = "Hingham Filter HM"
+    CoSMap.context?.coordinator.removeAreaPoints(CoSMap.mapView)
+    
+    db.collection("BostonArea").whereField("Name", isEqualTo: displayName).getDocuments { queryArea, err in
+      for document in queryArea!.documents {
+        CoSMap.areaName = document.get("DisplayName") as! String
+        let areaCenter = document.get("AreaCenter") as! GeoPoint
+        CoSMap.context?.coordinator.areaZoom = document.get("Zoom") as? Double ?? 20
+        let delta = 0.05
+        let cameraDistance = 10000.0
+        CoSMap.context?.coordinator.notGoingToArea = false
+        CoSMap.context?.coordinator.parent.getFilteredPlaces(CoSMap.mapView, filterField: type, filterValue: value)
+        let centerCoordinate = CLLocationCoordinate2D(latitude: areaCenter.latitude, longitude: areaCenter.longitude)
+        CoSMap.mapView.setRegion(MKCoordinateRegion(center: centerCoordinate, span: MKCoordinateSpan(latitudeDelta: delta, longitudeDelta: delta)), animated: true)
+
+        if let heading = document.get("Heading") as? Double {
+          let camera = MKMapCamera()
+          camera.heading = heading
+          camera.centerCoordinate = centerCoordinate
+          camera.centerCoordinateDistance = cameraDistance
+          CoSMap.mapView.setCamera(camera, animated: true)
+        }
+        
+        _ = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { timer in
+          CoSMap.context?.coordinator.parent.updateSpecials()
+        }
+      }
+      
+      CoSMap.context?.coordinator.parent.dataSource.level = "place"
+      CoSMap.context?.coordinator.currentLevel = "place"
     }
   }
   
@@ -814,8 +843,8 @@ struct CoSMap: UIViewRepresentable {
     CoSMap.mapView.isPitchEnabled = false
     CoSMap.mapView.showsCompass = true
     
-//    CoSMap.tgr = UITapGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleTap))
-//    CoSMap.tgr.numberOfTouchesRequired = 1
+//    let tgr = UITapGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleTap))
+//    tgr.numberOfTouchesRequired = 1
 //    CoSMap.mapView.addGestureRecognizer(tgr)
     
     CoSMap.lpgr = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(context.coordinator.handleLongPress))
@@ -1003,6 +1032,108 @@ struct CoSMap: UIViewRepresentable {
     }
   }
   
+  public func getFilteredPlaces(_ mapView: MKMapView, filterField: String, filterValue: String) {
+    CoSMap.panNumber = 1
+    CoSMap.placePoints = []
+    CoSMap.placeCounter = 1
+    let db = Firestore.firestore()
+    let placesRef = db.collection(dataSource.city)
+    var query = placesRef.whereField("ArchStyle", isNotEqualTo: "")
+    
+    if filterField == "ArchStyle" {
+      query = placesRef.whereField(filterField, isEqualTo: filterValue)
+    } else if filterField == "YearBuilt" {
+      if filterValue == "17th Century" {
+        query = placesRef.whereField(filterField, isGreaterThanOrEqualTo: "1600").whereField(filterField, isLessThanOrEqualTo: "1699" )
+      } else if filterValue == "Pre-Independence" {
+        query = placesRef.whereField(filterField, isGreaterThanOrEqualTo: "1700").whereField(filterField, isLessThanOrEqualTo: "1782" )
+      } else if filterValue == "Post-Independence" {
+        query = placesRef.whereField(filterField, isGreaterThanOrEqualTo: "1783").whereField(filterField, isLessThanOrEqualTo: "1820" )
+      } else if filterValue == "19th Century" {
+        query = placesRef.whereField(filterField, isGreaterThanOrEqualTo: "1800").whereField(filterField, isLessThanOrEqualTo: "1899" )
+      }
+    } else if filterField == "ShortName" {
+      query = placesRef.whereField(filterField, isEqualTo: filterValue)
+    }
+              
+    query.getDocuments { queryPlaces, err in
+      let places = queryPlaces!.documents
+      
+      for place in places {
+        let type = place.get("Type") as? Int ?? 0
+        var filter = -1
+        if Int(self.dataSource.filter) != nil {
+          filter = Int(self.dataSource.filter)!
+        }
+        if self.dataSource.filter == "" || type == filter {
+          let location = place.get("Location") as! GeoPoint
+          let mkPointAnnotation = MKPointAnnotation(__coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
+          var placePoint = Point(mkPointAnnotation: mkPointAnnotation)
+          placePoint.documentId = place.documentID
+          placePoint.name = place.get("Name") as? String ?? ""
+          placePoint.shortName = place.get("ShortName") as? String ?? ""
+          placePoint.coordinateLat = location.latitude
+          placePoint.coordinateLng = location.longitude
+          placePoint.address = place.get("Address") as? String ?? ""
+          placePoint.backgroundColor = place.get("BackgroundColor") as? String ?? ""
+          placePoint.desc = place.get("Description") as? String ?? ""
+          placePoint.notes = place.get("Notes") as? String ?? "Notes are coming soon."
+          placePoint.type = place.get("Type") as? Int ?? 0
+          placePoint.imageCount = place.get("ImageCount") as? Int ?? 0
+          placePoint.website = place.get("Website") as? String ?? ""
+          placePoint.googlePlaceId = place.get("GooglePlaceId") as? String ?? ""
+          placePoint.yelpPlaceId = place.get("YelpPlaceId") as? String ?? ""
+          placePoint.yelpCategory = place.get("YelpCategory") as? String ?? ""
+          placePoint.yelpUrl = place.get("YelpUrl") as? String ?? ""
+          placePoint.hours = place.get("Hours") as? String ?? ""
+          placePoint.phone = place.get("Phone") as? String ?? ""
+          placePoint.price = place.get("YelpPrice") as? String ?? ""
+          placePoint.estimatedValue = place.get("EstimatedValue") as? String ?? ""
+          placePoint.lotSize = place.get("LotSize") as? Double ?? 0.0
+          placePoint.squareFeet = place.get("SquareFeet") as? Int ?? 0
+          placePoint.yearBuilt = place.get("YearBuilt") as? String ?? "unknown"
+          placePoint.archStyle = place.get("ArchStyle") as? String ?? ""
+          if let googleRating = place.get("GoogleRating") as? String {
+            placePoint.googleRating = Double(googleRating) ?? 0.0
+          } else if let googleRating = place.get("GoogleRating") as? Int {
+            placePoint.googleRating = Double(googleRating)
+          } else if let googleRating = place.get("GoogleRating") as? Double {
+            placePoint.googleRating = googleRating
+          }
+          if let googleReviews = place.get("GoogleReviews") as? String {
+            placePoint.googleReviews = Int(googleReviews) ?? 0
+          } else if let googleReviews = place.get("GoogleReviews") as? Int {
+            placePoint.googleReviews = googleReviews
+          }
+          if let yelpRating = place.get("YelpRating") as? Double {
+            placePoint.yelpRating = yelpRating
+          }
+          if let yelpReviews = place.get("YelpReviews") as? String {
+            placePoint.yelpReviews = Int(yelpReviews) ?? 0
+          } else if let yelpReviews = place.get("YelpReviews") as? Int {
+            placePoint.yelpReviews = yelpReviews
+          }
+
+          CoSMap.placePoints.append(placePoint)
+          
+          let imageName = CoSMap.currentImageFolder == "Charleston" ? placePoint.address.replacingOccurrences(of: " ", with: "") : placePoint.name
+          let areaFolder = CoSMap.areaName.contains("HM") ? "Hingham HM" : CoSMap.areaName
+          CoSMap.pointImages[imageName] = UIImage(named: "\(areaFolder)/\(imageName)")
+          CoSMap.pointImageOriginalSizes[imageName] = CoSMap.pointImages[imageName]?.size
+          if self.dataSource.filter != "" {
+            let signName = "\(CoSMap.areaName.replacingOccurrences(of: " ", with: ""))/\(imageName)Sign"
+            if let _ = UIImage(named: signName) {
+              CoSMap.pointImages["\(imageName)Sign"] = UIImage(named: signName)
+            }
+          }
+        }
+      }
+      
+      CoSMap.updatePlaces()
+      CoSMap.selectedCallout = nil
+    }
+  }
+  
   public func updateSpecials() {
     let db = Firestore.firestore()
     
@@ -1073,18 +1204,18 @@ struct CoSMap: UIViewRepresentable {
     }
   }
   
-//  public static func updateGeoLocation(documentId:String, newLocation:CLLocationCoordinate2D) {
-//    let db = Firestore.firestore()
-//    let geoPoint = GeoPoint(latitude:newLocation.latitude,longitude:newLocation.longitude)
-//    db.collection("Boston").document(documentId).updateData(["Location":geoPoint]) { err in
-//      if let err = err {
-//        print("Error writing document: \(err)")
-//      } else {
-//        pointToBePlaced!.placeMarkerAnnotationView.isHidden = false
-//        pointToBePlaced = nil
-//      }
-//    }
-//  }
+  public static func updateGeoLocation(documentId:String, newLocation:CLLocationCoordinate2D) {
+    let db = Firestore.firestore()
+    let geoPoint = GeoPoint(latitude:newLocation.latitude,longitude:newLocation.longitude)
+    db.collection("Boston").document(documentId).updateData(["Location":geoPoint]) { err in
+      if let err = err {
+        print("Error writing document: \(err)")
+      } else {
+        pointToBePlaced!.placeMarkerAnnotationView.isHidden = false
+        pointToBePlaced = nil
+      }
+    }
+  }
   
   public static func updatePlaces() {
     UIImageView.setMapMovementEnabled(enabled: false)
@@ -1096,7 +1227,6 @@ struct CoSMap: UIViewRepresentable {
     
     CoSMap.specialTimers = Dictionary<String, Timer>()
     let areaZoom = mapView.camera.centerCoordinateDistance / 60
-    print("areaZoom is", areaZoom)
 
     for var placePoint in CoSMap.placePoints {
       let desc = placePoint.yelpCategory
@@ -1245,7 +1375,7 @@ struct CoSMap: UIViewRepresentable {
       self.parent = parent
     }
     
-//    @objc func handleTap(gestureRecognizer: UITapGestureRecognizer) {
+//    @objc func handleTap(gestureRecognizer: UILongPressGestureRecognizer) {
 //      if let pointToPlace = CoSMap.pointToBePlaced {
 //        let location = gestureRecognizer.location(in: CoSMap.mapView)
 //        let locationCoordinate = CoSMap.mapView.convert(location, toCoordinateFrom: CoSMap.mapView)
@@ -1258,9 +1388,12 @@ struct CoSMap: UIViewRepresentable {
         if gestureRecognizer.state != UIGestureRecognizer.State.ended {
           return
         } else if gestureRecognizer.state != UIGestureRecognizer.State.began {
-          // let loc = gestureRecognizer.location(in: CoSMap.selectedCallout)
-          
-          if CoSMap.selectedCallout == nil {
+          if let pointToPlace = CoSMap.pointToBePlaced {
+            let location = gestureRecognizer.location(in: CoSMap.mapView)
+            let locationCoordinate = CoSMap.mapView.convert(location, toCoordinateFrom: CoSMap.mapView)
+            CoSMap.updateGeoLocation(documentId: pointToPlace.documentId, newLocation: locationCoordinate)
+            CoSMap.updatePlaces()
+          } else {
             let touchPoint:CGPoint = gestureRecognizer.location(in: CoSMap.mapView)
             let touchMapCoordinates:CLLocationCoordinate2D = CoSMap.mapView.convert(touchPoint, toCoordinateFrom: CoSMap.mapView)
             parent.streetView.coordinate = touchMapCoordinates
@@ -1335,7 +1468,7 @@ struct CoSMap: UIViewRepresentable {
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
           if Date().timeIntervalSince(self.lastTime) > 0.1 {
             let delta = mapView.region.span.longitudeDelta
-            if (delta < 0.045) && (CoSMap.panNumber != 2 || UIDevice.current.userInterfaceIdiom == .pad) {
+            if (delta < 0.05) && (CoSMap.panNumber != 2 || UIDevice.current.userInterfaceIdiom == .pad) {
               self.notGoingToArea = true
               if abs(CoSMap.lastDistance - CoSMap.mapView.camera.centerCoordinateDistance) > 20 {
                 CoSMap.updatePlaces()
@@ -1558,8 +1691,8 @@ struct CoSMap: UIViewRepresentable {
               delta = 0.025
               cameraDistance = 3000.0
             case 16:
-              delta = 0.02
-              cameraDistance = 2500.0
+              delta = 0.022
+              cameraDistance = 2500.0451241112000
             case 16.5:
               delta = 0.015
               cameraDistance = 900.0
@@ -1607,12 +1740,12 @@ struct CoSMap: UIViewRepresentable {
         }
       } else {
         // ********** Point Placing **************************
-//        if let annotation = view.annotation {
-//          CoSMap.pointToBePlaced = placePoints.first { point in
-//            point.annotation.coordinate.longitude == annotation.coordinate.longitude && point.annotation.coordinate.latitude == annotation.coordinate.latitude
-//          }!
-//          CoSMap.pointToBePlaced?.placeMarkerAnnotationView.isHidden = true
-//        }
+        if let annotation = view.annotation {
+          CoSMap.pointToBePlaced = placePoints.first { point in
+            point.annotation.coordinate.longitude == annotation.coordinate.longitude && point.annotation.coordinate.latitude == annotation.coordinate.latitude
+          }!
+          // CoSMap.pointToBePlaced?.placeMarkerAnnotationView.isHidden = true
+        }
         // ********** End Point Placing **********************
         
 //        (view.detailCalloutAccessoryView!.superview!.superview!.subviews[2] as! UILabel).text = ""
@@ -1909,7 +2042,7 @@ struct CoSMap: UIViewRepresentable {
         let areas = queryAreas!.documents
         for area in areas {
           let displayName = area.get("DisplayName") as! String
-          if !["Penn Quarter", "Chinatown", "City Center"].contains(displayName) {
+          if !["Penn Quarter", "Chinatown", "City Center", "Hingham Filter"].contains(displayName) {
             let markerLocation = area.get("MarkerLocation") as! GeoPoint
             let areaCenter = area.get("AreaCenter") as! GeoPoint
             let zoom = area.get("Zoom") as? Float ?? 20
@@ -2277,7 +2410,7 @@ struct CoSMap: UIViewRepresentable {
         
         if areaName.contains("HM") {
           name = !name.hasSuffix("Tree") && !name.hasSuffix("Church") && !name.hasSuffix("Homestead") && !name.hasSuffix("Society") ? name + " House" : name
-          var size = "18"
+          var size = "20"
 
           if placePoint.name.count > 30 {
             size = "14"
@@ -2287,19 +2420,24 @@ struct CoSMap: UIViewRepresentable {
             size = "20"
           }
           
-          nameLabel.html = placePoint.website == "" ? name : "<a style='font-family:\"Hoefler Text\",Times !important;font-size:\(size)px!important;' href='\(placePoint.website)'>\(name)</a>"
-        } else {
-          nameLabel.html = placePoint.website == "" ? name : "<a href='\(placePoint.website)'>\(name)</a>"
+          nameLabel.html = placePoint.website == "" ? "<div style='font-family:\"Hoefler Text\",Times !important;font-size:\(size)px!important;'>\(name)</div>" : "<a style='font-family:\"Hoefler Text\",Times !important;font-size:\(size)px!important;' href='\(placePoint.website)'>\(name)</a>"
           
+        } else {
+          var size = "18"
+
           if placePoint.name.count > 30 {
-            nameLabel.textFontSize = 24
+            size = "20"
           } else if placePoint.name.count > 26 {
-            nameLabel.textFontSize = 26
+            size = "22"
           } else if placePoint.name.count > 18 {
-            nameLabel.textFontSize = 28
+            size = "24"
           } else {
-            nameLabel.textFontSize = 30
+            size = "26"
           }
+          
+          print(name, size)
+
+          nameLabel.html = placePoint.website == "" ? name : "<a style='font-family:HelveticaNeue;font-weight:700;font-size:\(size)px!important;' href='\(placePoint.website)'>\(name)</a>"
         }
         
         nameLabel.isUserInteractionEnabled = true
@@ -2375,12 +2513,12 @@ struct CoSMap: UIViewRepresentable {
         archStyleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 33.0).isActive = true
         archStyleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10.0).isActive = true
       } else {
-        addressLabel.topAnchor.constraint(equalTo: topAnchor, constant: 54.0).isActive = true
+        addressLabel.topAnchor.constraint(equalTo: topAnchor, constant: 36.0).isActive = true
         addressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10.0).isActive = true
         addSubview(phoneTextView)
         phoneTextView.dataDetectorTypes = UIDataDetectorTypes.phoneNumber
         phoneTextView.translatesAutoresizingMaskIntoConstraints = false
-        phoneTextView.topAnchor.constraint(equalTo: topAnchor, constant: 45.0).isActive = true
+        phoneTextView.topAnchor.constraint(equalTo: topAnchor, constant: 27.0).isActive = true
         phoneTextView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 18.0).isActive = true
         phoneTextView.widthAnchor.constraint(equalToConstant: 120.0).isActive = true
         phoneTextView.heightAnchor.constraint(equalToConstant: 30.0).isActive = true
@@ -2400,17 +2538,17 @@ struct CoSMap: UIViewRepresentable {
         descLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 4.0).isActive = true
         descLabel.heightAnchor.constraint(equalToConstant: 12.0).isActive = true
         descLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
-        descLabel.topAnchor.constraint(equalTo: topAnchor, constant: 69.0).isActive = true
+        descLabel.topAnchor.constraint(equalTo: topAnchor, constant: 51.0).isActive = true
         descLabel.text = placePoint.desc
         addSubview(openLabel)
         openLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
         openLabel.translatesAutoresizingMaskIntoConstraints = false
-        openLabel.topAnchor.constraint(equalTo: topAnchor, constant: 66.0).isActive = true
+        openLabel.topAnchor.constraint(equalTo: topAnchor, constant: 51.0).isActive = true
         openLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 139.0).isActive = true
         addSubview(hoursLabel)
         hoursLabel.font = UIFont(name: "HelveticaNeue", size: 10.0)
         hoursLabel.translatesAutoresizingMaskIntoConstraints = false
-        hoursLabel.topAnchor.constraint(equalTo: topAnchor, constant: 68.0).isActive = true
+        hoursLabel.topAnchor.constraint(equalTo: topAnchor, constant: 50.0).isActive = true
         hoursLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16.0).isActive = true
         hoursLabel.widthAnchor.constraint(equalToConstant: 90.0).isActive = true
         hoursLabel.textAlignment = .right
