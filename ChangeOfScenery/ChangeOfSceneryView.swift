@@ -2696,46 +2696,6 @@ struct CoSMap: UIViewRepresentable {
       notesTextView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5.0).isActive = true
     }
     
-    private func setupCloseButton() {
-      let action = UIAction(handler: { _ in
-        self.onCloseTap()
-      })
-
-      closeButton = UIButton(primaryAction: action)
-      addSubview(closeButton)
-      let configuration = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-      closeButton.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: configuration), for: .normal)
-      closeButton.isUserInteractionEnabled = true
-      closeButton.tintColor = .black
-      closeButton.translatesAutoresizingMaskIntoConstraints = false
-      closeButton.topAnchor.constraint(equalTo: topAnchor, constant: -14.0).isActive = true
-      closeButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 236.0).isActive = true
-      closeButton.widthAnchor.constraint(equalToConstant: 32.0).isActive = true
-      closeButton.heightAnchor.constraint(equalToConstant: 32.0).isActive = true
-      closeButton.layer.zPosition = 2
-      closeButton.setImage(UIImage(systemName: "chevron.backward.circle.fill", withConfiguration: configuration), for: .normal)
-      closeButton.isHidden = true
-    }
-
-    @objc public func onCloseTap() {
-      if CoSMap.reviewsDisplayed == true {
-        CoSMap.selectedCallout!.reviewListView.isHidden = true
-        CoSMap.selectedCallout!.closeButton.isHidden = true
-        if CoSMap.selectedCallout!.nameLabel.html == nil {
-          CoSMap.selectedCallout!.titleImageView.isUserInteractionEnabled = true
-        } else {
-          CoSMap.selectedCallout!.nameLabel.isUserInteractionEnabled = true
-        }
-        CoSMap.selectedCallout!.phoneTextView.isUserInteractionEnabled = true
-        CoSMap.selectedCallout!.notesTextView.isUserInteractionEnabled = true
-        UIImageView.setMapMovementEnabled(enabled: true)
-        CoSMap.reviewsDisplayed = false
-      } else {
-        CoSMap.mapView.deselectAnnotation(CoSMap.mapView.selectedAnnotations[0], animated: true)
-        UIImageView.setMapMovementEnabled(enabled: true)
-      }
-    }
-     
     public func getHoursOpen(hours: String) -> String {
       let daysHours = hours.components(separatedBy: ";")
       
